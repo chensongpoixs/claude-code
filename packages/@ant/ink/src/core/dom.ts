@@ -46,10 +46,9 @@ export type DOMElement = {
   dirty: boolean
   // Set by the reconciler's hideInstance/unhideInstance; survives style updates.
   isHidden?: boolean
-  // Event handlers set by the reconciler for the capture/bubble dispatcher.
-  // Stored separately from attributes so handler identity changes don't
-  // mark dirty and defeat the blit optimization.
-  _eventHandlers?: Partial<EventHandlerProps>
+  // 协调器写入的事件处理器（捕获/冒泡分发用）。
+  // 与 attributes 分离，避免 handler 引用变化触发 dirty 破坏 blit 优化。
+  _eventHandlers?: Partial<EventHandlerProps> // 见 event-handlers.ts EventHandlerProps
 
   // Scroll state for overflow: 'scroll' boxes. scrollTop is the number of
   // rows the content is scrolled down by. scrollHeight/scrollViewportHeight
