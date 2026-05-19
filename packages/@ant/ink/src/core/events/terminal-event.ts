@@ -101,7 +101,9 @@ export class TerminalEvent extends Event {
   _prepareForTarget(_target: EventTarget): void {}
 }
 
+import type { EventHandlerProps } from './event-handlers.js'
+
 export type EventTarget = {
   parentNode: EventTarget | undefined
-  _eventHandlers?: Record<string, unknown>
+  _eventHandlers?: Partial<EventHandlerProps>
 }

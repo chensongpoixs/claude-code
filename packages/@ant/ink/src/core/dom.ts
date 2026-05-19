@@ -1,3 +1,4 @@
+import type { EventHandlerProps } from './events/event-handlers.js'
 import type { FocusManager } from './focus.js'
 import { createLayoutNode } from './layout/engine.js'
 import type { LayoutNode } from './layout/node.js'
@@ -48,7 +49,7 @@ export type DOMElement = {
   // Event handlers set by the reconciler for the capture/bubble dispatcher.
   // Stored separately from attributes so handler identity changes don't
   // mark dirty and defeat the blit optimization.
-  _eventHandlers?: Record<string, unknown>
+  _eventHandlers?: Partial<EventHandlerProps>
 
   // Scroll state for overflow: 'scroll' boxes. scrollTop is the number of
   // rows the content is scrolled down by. scrollHeight/scrollViewportHeight

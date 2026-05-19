@@ -8,13 +8,19 @@ import type {
  *  cross-respawn `scaleCoord` survival. */
 export type ScreenshotDims = Omit<ScreenshotResult, 'base64'>
 
-/** Shape mirrors claude-for-chrome-mcp/src/types.ts:1-7 */
+/** Shape mirrors claude-for-chrome-mcp/src/types.ts Logger */
+export type LoggerDetail = Error | NodeJS.ErrnoException
+
+export function toLoggerDetail(detail: unknown): LoggerDetail | undefined {
+  return detail instanceof Error ? detail : undefined
+}
+
 export interface Logger {
-  info: (message: string, ...args: unknown[]) => void
-  error: (message: string, ...args: unknown[]) => void
-  warn: (message: string, ...args: unknown[]) => void
-  debug: (message: string, ...args: unknown[]) => void
-  silly: (message: string, ...args: unknown[]) => void
+  info: (message: string, detail?: LoggerDetail) => void
+  error: (message: string, detail?: LoggerDetail) => void
+  warn: (message: string, detail?: LoggerDetail) => void
+  debug: (message: string, detail?: LoggerDetail) => void
+  silly: (message: string, detail?: LoggerDetail) => void
 }
 
 /**

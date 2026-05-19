@@ -1,10 +1,65 @@
-export interface Logger {
-  info: (message: string, ...args: unknown[]) => void
-  error: (message: string, ...args: unknown[]) => void
-  warn: (message: string, ...args: unknown[]) => void
-  debug: (message: string, ...args: unknown[]) => void
-  silly: (message: string, ...args: unknown[]) => void
+/** Optional util.format detail; call sites pass caught exceptions. */
+export type LoggerDetail = Error | NodeJS.ErrnoException
+
+export function toLoggerDetail(detail: unknown): LoggerDetail | undefined {
+  return detail instanceof Error ? detail : undefined
 }
+
+export interface Logger {
+  info: (message: string, detail?: LoggerDetail) => void
+  error: (message: string, detail?: LoggerDetail) => void
+  warn: (message: string, detail?: LoggerDetail) => void
+  debug: (message: string, detail?: LoggerDetail) => void
+  silly: (message: string, detail?: LoggerDetail) => void
+}
+
+export type ChromeBridgeConnectionErrorType =
+  | 'no_user_id'
+  | 'no_oauth_token'
+  | 'websocket_error'
+
+/** Metadata shapes emitted by bridgeClient trackEvent calls. */
+export type ChromeBridgeToolCallMetadata = {
+  tool_name: string
+  tool_use_id: string
+  duration_ms?: number
+  timeout_ms?: number
+  error_message?: string
+}
+
+export type ChromeBridgeConnectionFailedMetadata = {
+  duration_ms: number
+  error_type: ChromeBridgeConnectionErrorType
+  reconnect_attempt: number
+}
+
+export type ChromeBridgeConnectionStartedMetadata = {
+  bridge_url: string
+}
+
+export type ChromeBridgeDisconnectedMetadata = {
+  close_code: number
+  duration_since_connect_ms: number
+  reconnect_attempt: number
+}
+
+export type ChromeBridgeConnectionSucceededMetadata = {
+  duration_ms: number
+  status: 'paired' | 'waiting'
+}
+
+export type ChromeBridgeReconnectExhaustedMetadata = {
+  total_attempts: number
+}
+
+export type ChromeBridgeTrackEventMetadata =
+  | ChromeBridgeToolCallMetadata
+  | ChromeBridgeConnectionFailedMetadata
+  | ChromeBridgeConnectionStartedMetadata
+  | ChromeBridgeDisconnectedMetadata
+  | ChromeBridgeConnectionSucceededMetadata
+  | ChromeBridgeReconnectExhaustedMetadata
+  | null
 
 export type PermissionMode =
   | 'ask'
@@ -49,9 +104,9 @@ export interface ClaudeForChromeContext {
   /** If set, permission mode is sent to the extension immediately on bridge connection. */
   initialPermissionMode?: PermissionMode
   /** Optional callback to track telemetry events for bridge connections */
-  trackEvent?: <K extends string>(
-    eventName: K,
-    metadata: Record<string, unknown> | null,
+  trackEvent?: (
+    eventName: string,
+    metadata: ChromeBridgeTrackEventMetadata,
   ) => void
   /** Called when user pairs with an extension via the browser pairing flow. */
   onExtensionPaired?: (deviceId: string, name: string) => void
