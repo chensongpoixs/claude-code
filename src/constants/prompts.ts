@@ -82,10 +82,20 @@ const BRIEF_PROACTIVE_SECTION: string | null =
         require('@claude-code-best/builtin-tools/tools/BriefTool/prompt.js') as typeof import('@claude-code-best/builtin-tools/tools/BriefTool/prompt.js')
       ).BRIEF_PROACTIVE_SECTION
     : null
-const briefToolModule =
-  feature('KAIROS') || feature('KAIROS_BRIEF')
-    ? (require('@claude-code-best/builtin-tools/tools/BriefTool/BriefTool.js') as typeof import('@claude-code-best/builtin-tools/tools/BriefTool/BriefTool.js'))
-    : null
+
+let briefToolModule:
+    | typeof import('@claude-code-best/builtin-tools/tools/BriefTool/BriefTool.js')
+    | null = null
+
+function getBriefToolModule() {
+    if (briefToolModule) return briefToolModule
+    if (!(feature('KAIROS') || feature('KAIROS_BRIEF'))) return null
+    briefToolModule = require(
+      '@claude-code-best/builtin-tools/tools/BriefTool/BriefTool.js',
+    ) as typeof import('@claude-code-best/builtin-tools/tools/BriefTool/BriefTool.js')
+    return briefToolModule
+  }
+
 const DISCOVER_SKILLS_TOOL_NAME: string | null = feature(
   'EXPERIMENTAL_SKILL_SEARCH',
 )
@@ -800,7 +810,7 @@ function getBriefSection(): string | null {
   // Whenever the tool is available, the model is told to use it. The
   // /brief toggle and --brief flag now only control the isBriefOnly
   // display filter — they no longer gate model-facing behavior.
-  if (!briefToolModule?.isBriefEnabled()) return null
+  if (!getBriefToolModule()?.isBriefEnabled()) return null
   // When proactive is active, getProactiveSection() already appends the
   // section inline. Skip here to avoid duplicating it in the system prompt.
   if (
@@ -864,5 +874,5 @@ Do not narrate each step, list every file you read, or explain routine actions. 
 
 The user context may include a \`terminalFocus\` field indicating whether the user's terminal is focused or unfocused. Use this to calibrate how autonomous you are:
 - **Unfocused**: The user is away. Lean heavily into autonomous action — make decisions, explore, commit, push. Only pause for genuinely irreversible or high-risk actions.
-- **Focused**: The user is watching. Be more collaborative — surface choices, ask before committing to large changes, and keep your output concise so it's easy to follow in real time.${BRIEF_PROACTIVE_SECTION && briefToolModule?.isBriefEnabled() ? `\n\n${BRIEF_PROACTIVE_SECTION}` : ''}`
+- **Focused**: The user is watching. Be more collaborative — surface choices, ask before committing to large changes, and keep your output concise so it's easy to follow in real time.${BRIEF_PROACTIVE_SECTION && getBriefToolModule()?.isBriefEnabled() ? `\n\n${BRIEF_PROACTIVE_SECTION}` : ''}`
 }
