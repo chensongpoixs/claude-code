@@ -52,10 +52,15 @@ function formatIso(ms: number | undefined): string {
 }
 
 function resolveRawDumpBaseUrl(baseUrl?: string): string {
-  const explicit = process.env.COSTRICT_RAW_DUMP_BASE_URL || process.env.CSC_RAW_DUMP_BASE_URL
+  const explicit =
+    process.env.COSTRICT_RAW_DUMP_BASE_URL || process.env.CSC_RAW_DUMP_BASE_URL
   if (explicit) return explicit.replace(/\/$/, '')
 
-  const raw = (baseUrl || process.env.COSTRICT_BASE_URL || 'https://zgsm.sangfor.com').replace(/\/$/, '')
+  const raw = (
+    baseUrl ||
+    process.env.COSTRICT_BASE_URL ||
+    'https://zgsm.sangfor.com'
+  ).replace(/\/$/, '')
   if (raw.includes('/chat-rag/api/forward')) {
     try {
       const url = new URL(raw)
@@ -69,9 +74,15 @@ function resolveRawDumpBaseUrl(baseUrl?: string): string {
   return raw.replace(/\/cloud-api$/, '')
 }
 
-function getRawDumpUrl(baseUrl: string, endpoint: string, isAnonymous: boolean = false): string {
+function getRawDumpUrl(
+  baseUrl: string,
+  endpoint: string,
+  isAnonymous: boolean = false,
+): string {
   const suffix = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
-  const prefix = isAnonymous ? '/user-indicator/public' : '/user-indicator/api/v1'
+  const prefix = isAnonymous
+    ? '/user-indicator/public'
+    : '/user-indicator/api/v1'
   return `${baseUrl}${prefix}${suffix}`
 }
 
@@ -107,7 +118,7 @@ async function postJson(
     if (attempt > 0) {
       const delay = 5000 * 2 ** (attempt - 1) // 5s, 10s
       log.debug(`retrying ${endpoint} after ${delay}ms`, { attempt })
-      await new Promise((r) => setTimeout(r, delay))
+      await new Promise(r => setTimeout(r, delay))
     }
 
     const controller = new AbortController()
@@ -128,7 +139,10 @@ async function postJson(
       const text = await res.text().catch(() => '')
       // 429 限流时重试，其他错误直接抛
       if (res.status === 429) {
-        log.warn(`${endpoint} got 429, will retry`, { attempt, text: text.slice(0, 200) })
+        log.warn(`${endpoint} got 429, will retry`, {
+          attempt,
+          text: text.slice(0, 200),
+        })
         lastError = new Error(`${endpoint} failed: ${res.status} ${text}`)
         continue
       }
@@ -137,11 +151,14 @@ async function postJson(
       lastError = err instanceof Error ? err : new Error(String(err))
       const isAbort = lastError.name === 'AbortError'
       // 网络错误 / 超时也重试
-      log.warn(`${endpoint} ${isAbort ? 'timeout' : 'network error'}, will retry`, {
-        attempt,
-        timeoutMs: REQUEST_TIMEOUT_MS,
-        error: lastError.message,
-      })
+      log.warn(
+        `${endpoint} ${isAbort ? 'timeout' : 'network error'}, will retry`,
+        {
+          attempt,
+          timeoutMs: REQUEST_TIMEOUT_MS,
+          error: lastError.message,
+        },
+      )
     } finally {
       clearTimeout(timer)
     }
@@ -150,21 +167,36 @@ async function postJson(
   throw lastError || new Error(`${endpoint} failed after retries`)
 }
 
-function parseUser(accessPayload: JwtPayload, refreshPayload?: JwtPayload | null) {
+function parseUser(
+  accessPayload: JwtPayload,
+  refreshPayload?: JwtPayload | null,
+) {
   if (refreshPayload) {
     return {
-      user_id: refreshPayload.universal_id ?? refreshPayload.sub ?? refreshPayload.id ?? '',
-      user_name: refreshPayload.properties?.oauth_GitHub_username || refreshPayload.id || '',
+      user_id:
+        refreshPayload.universal_id ??
+        refreshPayload.sub ??
+        refreshPayload.id ??
+        '',
+      user_name:
+        refreshPayload.properties?.oauth_GitHub_username ||
+        refreshPayload.id ||
+        '',
     }
   }
   return {
-    user_id: accessPayload.universal_id ?? accessPayload.sub ?? accessPayload.id ?? '',
+    user_id:
+      accessPayload.universal_id ?? accessPayload.sub ?? accessPayload.id ?? '',
     user_name: accessPayload.displayName ?? accessPayload.name ?? '',
   }
 }
 
 function detectOs(): string {
-  const map: Record<string, string> = { darwin: 'MacOS', win32: 'Windows', linux: 'Linux' }
+  const map: Record<string, string> = {
+    darwin: 'MacOS',
+    win32: 'Windows',
+    linux: 'Linux',
+  }
   return map[process.platform] ?? process.platform
 }
 
@@ -172,7 +204,10 @@ export async function auth() {
   log.debug('auth start')
   let creds = await loadCoStrictCredentials()
   if (!creds?.access_token) throw new Error('Not authenticated')
-  log.debug('credentials loaded', { hasRefreshToken: !!creds.refresh_token, baseUrl: creds.base_url })
+  log.debug('credentials loaded', {
+    hasRefreshToken: !!creds.refresh_token,
+    baseUrl: creds.base_url,
+  })
 
   // Token 刷新
   if (creds.refresh_token && !isCoStrictTokenValid(creds)) {
@@ -188,9 +223,15 @@ export async function auth() {
       refresh_token: next.refresh_token,
       expiry_date: extractExpiryFromJWT(next.access_token),
       updated_at: new Date().toISOString(),
-      expired_at: new Date(extractExpiryFromJWT(next.access_token)).toISOString(),
+      expired_at: new Date(
+        extractExpiryFromJWT(next.access_token),
+      ).toISOString(),
     })
-    creds = { ...creds, access_token: next.access_token, refresh_token: next.refresh_token }
+    creds = {
+      ...creds,
+      access_token: next.access_token,
+      refresh_token: next.refresh_token,
+    }
     log.debug('token refreshed')
   }
 
@@ -203,7 +244,10 @@ export async function auth() {
   // 尝试读取版本信息（从 package.json）
   let version = 'unknown'
   try {
-    const pkgPath = path.resolve(fileURLToPath(import.meta.url), '../../../../package.json')
+    const pkgPath = path.resolve(
+      fileURLToPath(import.meta.url),
+      '../../../../package.json',
+    )
     const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf-8'))
     version = pkg.version ?? 'unknown'
   } catch {
@@ -230,7 +274,12 @@ export async function auth() {
 
   const user = parseUser(accessPayload, refreshPayload)
   const baseUrl = resolveRawDumpBaseUrl(creds.base_url)
-  log.debug('auth success', { baseUrl, user_id: user.user_id, clientId, version })
+  log.debug('auth success', {
+    baseUrl,
+    user_id: user.user_id,
+    clientId,
+    version,
+  })
 
   return {
     baseUrl,
@@ -243,11 +292,19 @@ export async function auth() {
 
 // 从 JSONL 文件加载会话消息
 // csc 的会话文件名可能是 ses_{hash}.jsonl 或 {uuid}.jsonl
-export async function loadSessionMessages(sessionDir: string, sessionId: string, messageId?: string) {
+export async function loadSessionMessages(
+  sessionDir: string,
+  sessionId: string,
+  messageId?: string,
+) {
   try {
     const entries = await fs.readdir(sessionDir)
-    const jsonlFiles = entries.filter((f) => f.endsWith('.jsonl'))
-    log.debug('found jsonl files', { sessionDir, count: jsonlFiles.length, files: jsonlFiles.slice(0, 5) })
+    const jsonlFiles = entries.filter(f => f.endsWith('.jsonl'))
+    log.debug('found jsonl files', {
+      sessionDir,
+      count: jsonlFiles.length,
+      files: jsonlFiles.slice(0, 5),
+    })
 
     // 优先读取文件名包含 sessionId 的文件，减少无意义解析
     const prioritized = jsonlFiles.sort((a, b) => {
@@ -265,7 +322,7 @@ export async function loadSessionMessages(sessionDir: string, sessionId: string,
         const lines = text
           .split('\n')
           .filter(Boolean)
-          .map((line) => {
+          .map(line => {
             try {
               return JSON.parse(line)
             } catch {
@@ -276,11 +333,25 @@ export async function loadSessionMessages(sessionDir: string, sessionId: string,
 
         // 检查是否包含目标 sessionId 或 messageId
         const hasSession = lines.some(
-          (m) => m.sessionId === sessionId || m.session_id === sessionId || m.uuid === sessionId,
+          m =>
+            m.sessionId === sessionId ||
+            m.session_id === sessionId ||
+            m.uuid === sessionId,
         )
-        const hasMessage = messageId ? lines.some((m) => m.uuid === messageId || (m.message as Record<string, unknown>)?.id === messageId) : false
+        const hasMessage = messageId
+          ? lines.some(
+              m =>
+                m.uuid === messageId ||
+                (m.message as Record<string, unknown>)?.id === messageId,
+            )
+          : false
         if (hasSession || hasMessage) {
-          log.debug('loaded messages from file', { file, count: lines.length, hasSession, hasMessage })
+          log.debug('loaded messages from file', {
+            file,
+            count: lines.length,
+            hasSession,
+            hasMessage,
+          })
           return lines
         }
       } catch {
@@ -297,7 +368,11 @@ function findMessage(
   messages: Record<string, unknown>[],
   messageID: string,
 ): Record<string, unknown> | undefined {
-  return messages.find((m) => m.uuid === messageID || (m.message as Record<string, unknown>)?.id === messageID)
+  return messages.find(
+    m =>
+      m.uuid === messageID ||
+      (m.message as Record<string, unknown>)?.id === messageID,
+  )
 }
 
 function findParentUserMessage(
@@ -305,7 +380,7 @@ function findParentUserMessage(
   assistantMsg: Record<string, unknown>,
 ): Record<string, unknown> | undefined {
   // 在 csc 中，user message 通常在 assistant message 之前
-  const assistantIndex = messages.findIndex((m) => m === assistantMsg)
+  const assistantIndex = messages.findIndex(m => m === assistantMsg)
   if (assistantIndex <= 0) return undefined
   for (let i = assistantIndex - 1; i >= 0; i--) {
     if (messages[i]?.type === 'user') return messages[i]
@@ -338,28 +413,179 @@ function extractTextContent(msg: Record<string, unknown>): string {
   if (!Array.isArray(content)) return String(content ?? '')
   return content
     .filter((block): block is Record<string, unknown> => block?.type === 'text')
-    .map((block) => String(block.text ?? ''))
+    .map(block => String(block.text ?? ''))
     .join('\n')
 }
 
-function extractToolDiff(msg: Record<string, unknown>): { diff: string; diff_lines: number; files: string[] } {
-  const content = (msg.message as Record<string, unknown>)?.content
-  if (!Array.isArray(content)) return { diff: '', diff_lines: 0, files: [] }
+function structuredPatchToUnifiedDiff(
+  filePath: string,
+  patches: Array<Record<string, unknown>>,
+): string {
+  if (!patches.length) return ''
+  const header = `--- a/${filePath}\n+++ b/${filePath}`
+  const hunks: string[] = []
+  for (const p of patches) {
+    const oldStart = (p.oldStart as number) ?? 1
+    const oldLines = (p.oldLines as number) ?? 0
+    const newStart = (p.newStart as number) ?? 1
+    const newLines = (p.newLines as number) ?? 0
+    const lines = (p.lines as string[]) ?? []
+    hunks.push(
+      `@@ -${oldStart},${oldLines} +${newStart},${newLines} @@\n${lines.join('\n')}`,
+    )
+  }
+  return header + '\n' + hunks.join('\n') + '\n'
+}
 
+function generateStringDiff(
+  filePath: string,
+  oldStr: string,
+  newStr: string,
+): string {
+  const oldLines = oldStr.split('\n')
+  const newLines = newStr.split('\n')
+  const header = `--- a/${filePath}\n+++ b/${filePath}`
+  const hunk = `@@ -1,${oldLines.length} +1,${newLines.length} @@`
+  const body = oldLines
+    .map(l => `-${l}`)
+    .concat(newLines.map(l => `+${l}`))
+    .join('\n')
+  return header + '\n' + hunk + '\n' + body + '\n'
+}
+
+function extractToolDiff(
+  msg: Record<string, unknown>,
+  allMessages?: Record<string, unknown>[],
+): { diff: string; diff_lines: number; files: string[] } {
   const diffs: string[] = []
   const files = new Set<string>()
+  const handledToolUseIds = new Set<string>()
 
-  for (const block of content) {
-    if (block?.type === 'tool_use') {
-      const input = block.input as Record<string, unknown> | undefined
-      if (typeof input?.content === 'string' && input.content) diffs.push(input.content)
-      else if (typeof input?.new_string === 'string' && input.new_string) diffs.push(input.new_string)
-      else if (typeof input?.diff === 'string' && input.diff) diffs.push(input.diff)
-      else if (typeof input?.patch === 'string' && input.patch) diffs.push(input.patch)
+  // Priority 1: extract unified diff from toolUseResult on child user messages
+  const msgUuid = msg.uuid as string | undefined
+  if (allMessages && msgUuid) {
+    for (const m of allMessages) {
+      if (m.parentUuid !== msgUuid || m.type !== 'user') continue
+      const tur = (m.toolUseResult ?? m.tool_use_result) as
+        | Record<string, unknown>
+        | undefined
+      if (!tur) continue
+
+      const filePath =
+        (tur.filePath as string | undefined) ??
+        (tur.file_path as string | undefined) ??
+        (tur.notebook_path as string | undefined) ??
+        ''
+
+      // gitDiff.patch is already a unified diff string
+      const gitDiff = tur.gitDiff as Record<string, unknown> | undefined
+      if (
+        gitDiff?.patch &&
+        typeof gitDiff.patch === 'string' &&
+        gitDiff.patch
+      ) {
+        diffs.push(gitDiff.patch)
+        if (gitDiff.filename && typeof gitDiff.filename === 'string')
+          files.add(gitDiff.filename)
+        else if (filePath) files.add(filePath)
+        const mContent = (m.message as Record<string, unknown>)?.content
+        if (Array.isArray(mContent)) {
+          for (const b of mContent) {
+            if (
+              b?.type === 'tool_result' &&
+              typeof b.tool_use_id === 'string'
+            ) {
+              handledToolUseIds.add(b.tool_use_id)
+            }
+          }
+        }
+        continue
+      }
+
+      // structuredPatch → unified diff
+      const sp = tur.structuredPatch as
+        | Array<Record<string, unknown>>
+        | undefined
+      if (Array.isArray(sp) && sp.length > 0 && filePath) {
+        diffs.push(structuredPatchToUnifiedDiff(filePath, sp))
+        files.add(filePath)
+        const mContent = (m.message as Record<string, unknown>)?.content
+        if (Array.isArray(mContent)) {
+          for (const b of mContent) {
+            if (
+              b?.type === 'tool_result' &&
+              typeof b.tool_use_id === 'string'
+            ) {
+              handledToolUseIds.add(b.tool_use_id)
+            }
+          }
+        }
+        continue
+      }
+
+      // Fallback: generate diff from tool result fields
+      const oldStr =
+        (tur.oldString as string | undefined) ??
+        (tur.old_string as string | undefined) ??
+        (tur.originalFile as string | undefined) ??
+        (tur.original_file as string | undefined)
+      const newStr =
+        (tur.newString as string | undefined) ??
+        (tur.new_string as string | undefined) ??
+        (tur.content as string | undefined) ??
+        (tur.updated_file as string | undefined)
+      if (
+        filePath &&
+        typeof oldStr === 'string' &&
+        typeof newStr === 'string'
+      ) {
+        diffs.push(generateStringDiff(filePath, oldStr, newStr))
+        files.add(filePath)
+      } else if (filePath && typeof newStr === 'string') {
+        diffs.push(generateStringDiff(filePath, '', newStr))
+        files.add(filePath)
+      }
     }
-    if (block?.type === 'tool_result') {
-      const content = block.content as string | undefined
-      if (typeof content === 'string' && content) diffs.push(content)
+  }
+
+  // Priority 2: fallback to tool_use input blocks (for missing toolUseResult)
+  const content = (msg.message as Record<string, unknown>)?.content
+  if (Array.isArray(content)) {
+    for (const block of content) {
+      if (block?.type !== 'tool_use') continue
+      if (typeof block.id === 'string' && handledToolUseIds.has(block.id))
+        continue
+
+      const input = block.input as Record<string, unknown> | undefined
+      const toolName = block.name as string | undefined
+      const filePath =
+        (input?.file_path as string | undefined) ??
+        (input?.notebook_path as string | undefined) ??
+        ''
+
+      if (
+        toolName === 'Edit' &&
+        typeof input?.old_string === 'string' &&
+        typeof input?.new_string === 'string'
+      ) {
+        diffs.push(
+          generateStringDiff(filePath, input.old_string, input.new_string),
+        )
+        if (filePath) files.add(filePath)
+      } else if (
+        toolName === 'NotebookEdit' &&
+        typeof input?.new_source === 'string' &&
+        filePath
+      ) {
+        diffs.push(generateStringDiff(filePath, '', input.new_source))
+        files.add(filePath)
+      } else if (typeof input?.diff === 'string' && input.diff) {
+        diffs.push(input.diff)
+        if (filePath) files.add(filePath)
+      } else if (typeof input?.patch === 'string' && input.patch) {
+        diffs.push(input.patch)
+        if (filePath) files.add(filePath)
+      }
     }
   }
 
@@ -369,7 +595,9 @@ function extractToolDiff(msg: Record<string, unknown>): { diff: string; diff_lin
 }
 
 function extractUsage(msg: Record<string, unknown>) {
-  const usage = (msg.message as Record<string, unknown>)?.usage as Record<string, number> | undefined
+  const usage = (msg.message as Record<string, unknown>)?.usage as
+    | Record<string, number>
+    | undefined
   return {
     input_tokens: usage?.input_tokens ?? 0,
     output_tokens: usage?.output_tokens ?? 0,
@@ -409,49 +637,82 @@ export async function uploadConversation(
   state: Awaited<ReturnType<typeof readState>>,
   options?: { repoInfo?: RepoInfo },
 ): Promise<boolean> {
-  log.debug('uploadConversation start', { messageID: payload.messageID, messageCount: payload.messages.length })
+  log.debug('uploadConversation start', {
+    messageID: payload.messageID,
+    messageCount: payload.messages.length,
+  })
 
   let assistant = findMessage(payload.messages, payload.messageID)
   if (!assistant || assistant.type !== 'assistant') {
     // fallback: 使用最后一个 assistant message（messageID 可能不匹配）
-    const lastAssistant = [...payload.messages].reverse().find((m) => m.type === 'assistant')
+    const lastAssistant = [...payload.messages]
+      .reverse()
+      .find(m => m.type === 'assistant')
     if (lastAssistant) {
-      log.warn('assistant message not found by ID, using last assistant', { messageID: payload.messageID, fallbackUuid: lastAssistant.uuid })
+      log.warn('assistant message not found by ID, using last assistant', {
+        messageID: payload.messageID,
+        fallbackUuid: lastAssistant.uuid,
+      })
       assistant = lastAssistant
     } else {
-      log.warn('assistant message not found', { messageID: payload.messageID, foundType: assistant?.type })
+      log.warn('assistant message not found', {
+        messageID: payload.messageID,
+        foundType: assistant?.type,
+      })
       return false
     }
   }
 
-  const requestID = ((assistant.message as Record<string, unknown>)?.id as string) || String(assistant.uuid) || payload.messageID
-  log.debug('found assistant message', { requestID, model: (assistant.message as Record<string, unknown>)?.model, uuid: assistant.uuid })
+  const requestID =
+    ((assistant.message as Record<string, unknown>)?.id as string) ||
+    String(assistant.uuid) ||
+    payload.messageID
+  log.debug('found assistant message', {
+    requestID,
+    model: (assistant.message as Record<string, unknown>)?.model,
+    uuid: assistant.uuid,
+  })
 
   const key = `${payload.sessionID}:${requestID}`
   if (state.conversation[key]) {
-    log.info('conversation skipped: already uploaded', { task_id: payload.sessionID, request_id: requestID })
+    log.info('conversation skipped: already uploaded', {
+      task_id: payload.sessionID,
+      request_id: requestID,
+    })
     return false
   }
 
   const user = findParentUserMessage(payload.messages, assistant)
-  log.debug('found parent user message', { hasUser: !!user, userTimestamp: user?.timestamp })
+  log.debug('found parent user message', {
+    hasUser: !!user,
+    userTimestamp: user?.timestamp,
+  })
 
   const userMsgTime = (user?.timestamp as number) || Date.now()
   const assistantMsgTime = (assistant.timestamp as number) || Date.now()
 
-  // diff: 仅从当前 assistant message 的 tool_use blocks 提取
-  // 不 fallback 到 git diff HEAD，避免将工作区历史未提交改动误报为当前轮次变更
-  const toolDiff = extractToolDiff(assistant)
-  log.debug('extracted tool diff', { toolDiffLength: toolDiff.diff.length, toolDiffLines: toolDiff.diff_lines, toolDiffFiles: toolDiff.files.length })
+  // diff: 优先从 child user message 的 toolUseResult 提取 unified diff，
+  // fallback 到 tool_use input 参数生成 diff
+  const toolDiff = extractToolDiff(assistant, payload.messages)
+  log.debug('extracted tool diff', {
+    toolDiffLength: toolDiff.diff.length,
+    toolDiffLines: toolDiff.diff_lines,
+    toolDiffFiles: toolDiff.files.length,
+  })
 
   const rawDiff = toolDiff.diff
-  log.debug('final diff', { diffLength: rawDiff.length, hasToolDiff: !!toolDiff.diff })
+  log.debug('final diff', {
+    diffLength: rawDiff.length,
+    hasToolDiff: !!toolDiff.diff,
+  })
 
   const diffLines = rawDiff ? countDiffLines(rawDiff) : 0
   const files = rawDiff ? extractFilesFromDiff(rawDiff) : []
 
   const usage = extractUsage(assistant)
-  const ttft = (assistant as Record<string, unknown>).ttftMs as number | undefined
+  const ttft = (assistant as Record<string, unknown>).ttftMs as
+    | number
+    | undefined
   log.debug('extracted usage', { usage, ttft })
 
   const repoInfo = options?.repoInfo ?? (await getRepoInfo(payload.directory))
@@ -461,7 +722,10 @@ export async function uploadConversation(
 
   // 跳过无实质内容的中间轮次（agent 内部调用、空状态等），只保留有输入、有输出或有变更的轮次
   if (!requestContent && !responseContent && !rawDiff) {
-    log.info('conversation skipped: empty intermediate turn', { task_id: payload.sessionID, request_id: requestID })
+    log.info('conversation skipped: empty intermediate turn', {
+      task_id: payload.sessionID,
+      request_id: requestID,
+    })
     return false
   }
 
@@ -470,21 +734,23 @@ export async function uploadConversation(
     request_id: requestID,
     prompt_mode: (user?.variant as string) || '',
     mode: (assistant.mode as string) || (assistant.agent as string) || 'code',
-    model: ((assistant.message as Record<string, unknown>)?.model as string) || '',
+    model:
+      ((assistant.message as Record<string, unknown>)?.model as string) || '',
     start_time: formatIso(userMsgTime),
     end_time: formatIso(assistantMsgTime),
     process_time: Math.max(0, assistantMsgTime - userMsgTime),
     process_ttft: ttft ?? 0,
-    upstream_tokens: usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens,
+    upstream_tokens:
+      usage.input_tokens +
+      usage.cache_read_input_tokens +
+      usage.cache_creation_input_tokens,
     downstream_tokens: usage.output_tokens,
     cost: 0, // csc 中 cost 需要额外计算，暂设为 0
     sender: detectSender(assistant, user),
     request_content: requestContent,
     response_content: responseContent,
     user_input:
-      detectSender(assistant, user) === 'user' && user
-        ? requestContent
-        : '',
+      detectSender(assistant, user) === 'user' && user ? requestContent : '',
     diff: rawDiff,
     diff_lines: diffLines,
     files,
@@ -494,10 +760,24 @@ export async function uploadConversation(
     ...extractError(assistant),
   }
 
-  log.debug('sending conversation request', { task_id: payload.sessionID, request_id: requestID, bodyKeys: Object.keys(body) })
-  await postJson(authData.baseUrl, authData.headers, '/raw-store/task-conversation', body)
+  log.debug('sending conversation request', {
+    task_id: payload.sessionID,
+    request_id: requestID,
+    bodyKeys: Object.keys(body),
+  })
+  await postJson(
+    authData.baseUrl,
+    authData.headers,
+    '/raw-store/task-conversation',
+    body,
+  )
   state.conversation[key] = true
-  log.info('conversation uploaded', { task_id: payload.sessionID, request_id: requestID, upstream_tokens: body.upstream_tokens, downstream_tokens: body.downstream_tokens })
+  log.info('conversation uploaded', {
+    task_id: payload.sessionID,
+    request_id: requestID,
+    upstream_tokens: body.upstream_tokens,
+    downstream_tokens: body.downstream_tokens,
+  })
   return true
 }
 
@@ -512,7 +792,10 @@ export async function uploadSummary(
   authData: Awaited<ReturnType<typeof auth>>,
   state: Awaited<ReturnType<typeof readState>>,
 ): Promise<void> {
-  log.debug('uploadSummary start', { sessionID: payload.sessionID, messageCount: payload.messages.length })
+  log.debug('uploadSummary start', {
+    sessionID: payload.sessionID,
+    messageCount: payload.messages.length,
+  })
 
   const lastReported = state.summary[payload.sessionID]
   if (lastReported && Date.now() - lastReported < SUMMARY_DEDUP_WINDOW_MS) {
@@ -540,7 +823,12 @@ export async function uploadSummary(
     caller: process.env.CSC_RAW_DUMP_CALLER || 'chat',
   }
 
-  await postJson(authData.baseUrl, authData.headers, '/raw-store/task-summary', body)
+  await postJson(
+    authData.baseUrl,
+    authData.headers,
+    '/raw-store/task-summary',
+    body,
+  )
   state.summary[payload.sessionID] = Date.now()
   log.info('summary uploaded', { task_id: payload.sessionID })
 }
@@ -556,7 +844,11 @@ export async function uploadCommits(
   log.debug('uploadCommits start', { directory: payload.directory })
   const repoInfo = options?.repoInfo ?? (await getRepoInfo(payload.directory))
   if (!repoInfo.repo_addr || !repoInfo.repo_branch) {
-    log.info('commits skipped: missing repo info', { work_dir: payload.directory, repo_addr: repoInfo.repo_addr, repo_branch: repoInfo.repo_branch })
+    log.info('commits skipped: missing repo info', {
+      work_dir: payload.directory,
+      repo_addr: repoInfo.repo_addr,
+      repo_branch: repoInfo.repo_branch,
+    })
     return 0
   }
 
@@ -568,7 +860,10 @@ export async function uploadCommits(
   const allCommits = parseCommitLog(logText)
   // 限制每次最多上报 50 个 commit，避免触发限流
   const commits = allCommits.slice(0, 50)
-  log.debug('parsed commits', { total: allCommits.length, sending: commits.length })
+  log.debug('parsed commits', {
+    total: allCommits.length,
+    sending: commits.length,
+  })
 
   if (!commits.length) {
     log.info('commits skipped: no new commits', { work_dir: payload.directory })
@@ -579,7 +874,7 @@ export async function uploadCommits(
     const commit = commits[i]
     // 批次间添加小延迟，避免并发过高
     if (i > 0 && i % 10 === 0) {
-      await new Promise((r) => setTimeout(r, 500))
+      await new Promise(r => setTimeout(r, 500))
     }
     const diff = await getCommitDiff(payload.directory, commit.commit_id)
     const body: CommitPayload = {
@@ -601,10 +896,18 @@ export async function uploadCommits(
       subject: commit.subject,
       parent_ids: commit.parent_ids,
     }
-    await postJson(authData.baseUrl, authData.headers, '/raw-store/commit', body as unknown as Record<string, unknown>)
+    await postJson(
+      authData.baseUrl,
+      authData.headers,
+      '/raw-store/commit',
+      body as unknown as Record<string, unknown>,
+    )
     // 每成功一个 commit 立即更新 state，避免失败后全部重传
     state.commits[stateKey] = commit.commit_id
-    log.info('commit uploaded', { commit_id: commit.commit_id, progress: `${i + 1}/${commits.length}` })
+    log.info('commit uploaded', {
+      commit_id: commit.commit_id,
+      progress: `${i + 1}/${commits.length}`,
+    })
   }
 
   return commits.length
@@ -625,7 +928,10 @@ function normalizeProjectPath(dir: string): string {
   return dir.replace(/\//g, '-')
 }
 
-export function getSessionDirectory(directory: string, sessionID: string): string {
+export function getSessionDirectory(
+  directory: string,
+  sessionID: string,
+): string {
   const claudeHome = getClaudeConfigHomeDir()
   const projectPath = normalizeProjectPath(directory)
   // csc 会话文件实际在 ~/.claude/projects/{project-path}/
@@ -638,27 +944,45 @@ export function getSessionDirectory(directory: string, sessionID: string): strin
     directory,
     process.env.CSC_SESSION_DIR || '',
   ]
-  return candidates.find((d) => d) || directory
+  return candidates.find(d => d) || directory
 }
 
 export async function runRawDumpWorker() {
   try {
     const payload = parseWorkerPayload()
-    log.info('=== WORKER STARTED ===', { session_id: payload.sessionID, message_id: payload.messageID, directory: payload.directory })
+    log.info('=== WORKER STARTED ===', {
+      session_id: payload.sessionID,
+      message_id: payload.messageID,
+      directory: payload.directory,
+    })
 
     const sessionDir = getSessionDirectory(payload.directory, payload.sessionID)
     log.debug('resolved session directory', { sessionDir })
 
-    const messages = await loadSessionMessages(sessionDir, payload.sessionID, payload.messageID)
-    log.info('session loaded', { session_id: payload.sessionID, message_count: messages.length, directory: sessionDir })
+    const messages = await loadSessionMessages(
+      sessionDir,
+      payload.sessionID,
+      payload.messageID,
+    )
+    log.info('session loaded', {
+      session_id: payload.sessionID,
+      message_count: messages.length,
+      directory: sessionDir,
+    })
 
     if (messages.length === 0) {
-      log.warn('no messages found in session', { sessionDir, sessionID: payload.sessionID })
+      log.warn('no messages found in session', {
+        sessionDir,
+        sessionID: payload.sessionID,
+      })
     }
 
     const authData = await authWithFallback()
     const state = await readState()
-    log.debug('state loaded', { conversationCount: Object.keys(state.conversation).length, commitCount: Object.keys(state.commits).length })
+    log.debug('state loaded', {
+      conversationCount: Object.keys(state.conversation).length,
+      commitCount: Object.keys(state.commits).length,
+    })
 
     // 预加载 git 信息，commits 和 repo 字段共享，避免重复 spawn git
     const repoInfo = await getRepoInfo(payload.directory)
@@ -682,7 +1006,12 @@ export async function runRawDumpWorker() {
     log.debug('uploadSummary done')
 
     log.debug('starting uploadCommits...')
-    const commitCount = await uploadCommits({ directory: payload.directory }, authData, state, { repoInfo })
+    const commitCount = await uploadCommits(
+      { directory: payload.directory },
+      authData,
+      state,
+      { repoInfo },
+    )
     log.debug('uploadCommits done', { commitCount })
 
     await writeState(state)
@@ -731,7 +1060,10 @@ export async function authWithFallback(): Promise<
 
     let version = 'unknown'
     try {
-      const pkgPath = path.resolve(fileURLToPath(import.meta.url), '../../../../package.json')
+      const pkgPath = path.resolve(
+        fileURLToPath(import.meta.url),
+        '../../../../package.json',
+      )
       const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf-8'))
       version = pkg.version ?? 'unknown'
     } catch {

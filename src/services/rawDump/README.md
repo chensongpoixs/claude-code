@@ -188,8 +188,20 @@ reportTurn(sessionId, assistantMessage.uuid, cwd)
 csc 没有 opencode 中的 `step-start`/`step-finish` snapshot 机制，采用以下策略：
 
 ### Conversation diff
-- **唯一来源**：从当前 assistant message 的 `tool_use` blocks 中提取 `input.content` / `new_string` / `diff` / `patch`
-- **无 fallback**：不执行 `git diff HEAD`。工作区中历史未提交的改动与当前对话轮次无关，不应混入 conversation diff。
+Diff 提取采用**两级优先级**策略，确保始终输出统一格式的 unified diff：
+
+1. **第一优先级（优先）：从 child user message 的 `toolUseResult` 提取 unified diff**
+   - `toolUseResult.gitDiff.patch`：已经是 unified diff 格式，直接使用
+   - `toolUseResult.structuredPatch`：结构化的 hunk 数组，通过 `structuredPatchToUnifiedDiff()` 转换为标准 unified diff 格式
+   - `toolUseResult.oldString` / `newString` / `originalFile` / `content`：通过 `generateStringDiff()` 生成最小 unified diff
+
+2. **第二优先级（fallback）：从 `tool_use` input blocks 生成 unified diff**
+   - `Edit` 工具：`input.old_string` / `input.new_string` → 生成 unified diff（`--- a/file\n+++ b/file\n@@ ... @@`）
+   - `NotebookEdit` 工具：`input.new_source` → 作为新增内容（无旧内容对比）
+   - `input.diff` / `input.patch`：已经是 diff/patch 格式，直接使用
+   - **不再将 `input.content`（FileWriteTool 的完整文件内容）或 `input.new_string`（FileEditTool 的替换片段）作为原始文本推入 diff**，而是优先从 `toolUseResult` 获取结构化 patch 或生成 unified diff
+
+3. **不 fallback 到 `git diff HEAD`**：工作区中历史未提交的改动与当前对话轮次无关，不应混入 conversation diff。
 
 ### Summary diff
 - 直接执行 `git diff HEAD`，获取整个工作区相对于最新 commit 的变更

@@ -82,9 +82,13 @@ const BRIEF_PROACTIVE_SECTION: string | null =
         require('@claude-code-best/builtin-tools/tools/BriefTool/prompt.js') as typeof import('@claude-code-best/builtin-tools/tools/BriefTool/prompt.js')
       ).BRIEF_PROACTIVE_SECTION
     : null
-const briefToolModule =
+const _briefToolModule =
   feature('KAIROS') || feature('KAIROS_BRIEF')
     ? (require('@claude-code-best/builtin-tools/tools/BriefTool/BriefTool.js') as typeof import('@claude-code-best/builtin-tools/tools/BriefTool/BriefTool.js'))
+    : null
+const briefToolModule =
+  _briefToolModule && typeof _briefToolModule.isBriefEnabled === 'function'
+    ? _briefToolModule
     : null
 const DISCOVER_SKILLS_TOOL_NAME: string | null = feature(
   'EXPERIMENTAL_SKILL_SEARCH',
