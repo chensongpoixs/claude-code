@@ -37,6 +37,15 @@ export function FileEditToolDiff(props: Props): React.ReactNode {
 function DiffBody({ promise, file_path }: { promise: Promise<DiffData>; file_path: string }): React.ReactNode {
   const { patch, firstLine, fileContent } = use(promise);
   const { columns } = useTerminalSize();
+
+  if (patch.length === 0) {
+    return (
+      <DiffFrame>
+        <Text dimColor>No changes to display</Text>
+      </DiffFrame>
+    );
+  }
+
   return (
     <DiffFrame>
       <StructuredDiffList

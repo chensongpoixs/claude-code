@@ -153,6 +153,9 @@ export function getPatchForDisplay({
         convertLeadingTabsToSpaces(new_string),
       )
 
+      if (escapedOldString === '') {
+        return escapedNewString
+      }
       if (replace_all) {
         return p.replaceAll(escapedOldString, () => escapedNewString)
       } else {

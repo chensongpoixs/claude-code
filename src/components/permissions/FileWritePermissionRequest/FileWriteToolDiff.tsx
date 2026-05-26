@@ -46,7 +46,7 @@ export function FileWriteToolDiff({ file_path, content, fileExists, oldContent }
         borderRight={false}
         paddingX={paddingX}
       >
-        {hunks ? (
+        {hunks && hunks.length > 0 ? (
           intersperse(
             hunks.map(_ => (
               <StructuredDiff
