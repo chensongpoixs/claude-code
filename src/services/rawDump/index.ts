@@ -17,16 +17,35 @@ let batchWorkerSpawned = false
 const lastEnqueueMap = new Map<string, number>()
 const ENQUEUE_DEBOUNCE_MS = 5_000
 
+/**
+ * 判断 Raw Dump 是否启用
+ * - 本地调试模式（isLocalDumpMode）自动启用
+ * - 环境变量 CSC_DISABLE_RAW_DUMP 或 COSTRICT_DISABLE_RAW_DUMP 为 '1'/'true' 时禁用
+ * - 默认启用
+ */
 function isEnabled(): boolean {
   // 本地调试模式自动启用
   if (isLocalDumpMode()) return true
   // 显式禁用
-  if (process.env.CSC_DISABLE_RAW_DUMP === '1' || process.env.CSC_DISABLE_RAW_DUMP === 'true') return false
-  if (process.env.COSTRICT_DISABLE_RAW_DUMP === '1' || process.env.COSTRICT_DISABLE_RAW_DUMP === 'true') return false
+  if (
+    process.env.CSC_DISABLE_RAW_DUMP === '1' ||
+    process.env.CSC_DISABLE_RAW_DUMP === 'true'
+  )
+    return false
+  if (
+    process.env.COSTRICT_DISABLE_RAW_DUMP === '1' ||
+    process.env.COSTRICT_DISABLE_RAW_DUMP === 'true'
+  )
+    return false
   // 默认启用 raw dump
   return true
 }
 
+/**
+ * 确保 Batch Worker 已启动
+ * - 首次调用时尝试 spawn 独立 worker 进程
+ * - spawn 失败（worker 文件缺失或无合适 runtime）则降级为内联运行
+ */
 function ensureBatchWorker() {
   if (batchWorkerSpawned) return
   batchWorkerSpawned = true
@@ -37,12 +56,21 @@ function ensureBatchWorker() {
   }
 }
 
+/**
+ * 判断当前 session + message 是否需要 enqueue（去重）
+ * 同一 key 在 5 秒内只允许 enqueue 一次，避免重复上报
+ * @returns true 表示需要入队，false 表示跳过
+ */
 function shouldEnqueue(sessionID: string, messageID: string): boolean {
   const key = `${sessionID}:${messageID}`
   const now = Date.now()
   const last = lastEnqueueMap.get(key)
   if (last && now - last < ENQUEUE_DEBOUNCE_MS) {
-    log.debug('reportTurn debounced', { sessionID, messageID, lastMs: now - last })
+    log.debug('reportTurn debounced', {
+      sessionID,
+      messageID,
+      lastMs: now - last,
+    })
     return false
   }
   lastEnqueueMap.set(key, now)
@@ -53,13 +81,22 @@ function shouldEnqueue(sessionID: string, messageID: string): boolean {
  * 上报一轮对话
  * 只写入队列，由 batch worker 顺序消费
  */
-export function reportTurn(sessionID: string, messageID: string, directory: string): void {
+export function reportTurn(
+  sessionID: string,
+  messageID: string,
+  directory: string,
+): void {
   if (!isEnabled()) return
   if (!shouldEnqueue(sessionID, messageID)) return
   enqueue({ sessionID, messageID, directory })
   ensureBatchWorker()
 }
 
+/**
+ * 上报 session 摘要信息
+ * 使用特殊 messageID '__summary__' 标识，与普通 conversation 分开去重
+ * 只写入队列，由 batch worker 顺序消费
+ */
 export function reportSession(sessionID: string, directory: string): void {
   if (!isEnabled()) return
   if (!shouldEnqueue(sessionID, '__summary__')) return

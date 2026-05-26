@@ -4,8 +4,19 @@
  * 独立进程，通过自循环 setTimeout 严格串行执行
  */
 
-import { uploadConversation, uploadSummary, uploadCommits, authWithFallback } from './worker.js'
-import { readQueue, clearQueue, acquireLock, releaseLock, type QueueTask } from './queue.js'
+import {
+  uploadConversation,
+  uploadSummary,
+  uploadCommits,
+  authWithFallback,
+} from './worker.js'
+import {
+  readQueue,
+  clearQueue,
+  acquireLock,
+  releaseLock,
+  type QueueTask,
+} from './queue.js'
 import { readState, writeState } from './state.js'
 import { getSessionDirectory, loadSessionMessages } from './worker.js'
 import { getRepoInfo } from './git.js'
@@ -21,6 +32,11 @@ const BATCH_INTERVAL_MS = 120_000 // 每轮间隔（2 分钟），降低内联�
 const repoInfoCache = new Map<string, { repoInfo: RepoInfo; ts: number }>()
 const REPO_CACHE_TTL_MS = 60_000
 
+/**
+ * 批量获取 Git 仓库信息（带缓存）
+ * 同一 directory 在 60 秒内不重复调用 git 命令
+ * @returns 缓存的 RepoInfo 或新获取的信息
+ */
 async function getCachedRepoInfo(directory: string): Promise<RepoInfo> {
   const cached = repoInfoCache.get(directory)
   if (cached && Date.now() - cached.ts < REPO_CACHE_TTL_MS) {
@@ -37,6 +53,12 @@ let isRunning = false
 const PARENT_PID = process.ppid
 const IS_WORKER_PROCESS = process.argv[1]?.includes('batchWorker') || false
 
+/**
+ * 检测父进程是否还在运行
+ * - 仅在独立 worker 进程中生效（IS_WORKER_PROCESS = true）
+ * - 使用 kill(pid, 0) 检测进程是否存在
+ * - 父进程退出时 worker 应停止，避免孤儿进程
+ */
 function isParentAlive(): boolean {
   if (!IS_WORKER_PROCESS) return true
   try {
@@ -48,10 +70,22 @@ function isParentAlive(): boolean {
 }
 
 // Session messages 缓存：同一 session 的多个 task 短时间内不需要重复读取 JSONL
-const sessionMessagesCache = new Map<string, { messages: Record<string, unknown>[]; ts: number }>()
+const sessionMessagesCache = new Map<
+  string,
+  { messages: Record<string, unknown>[]; ts: number }
+>()
 const SESSION_CACHE_TTL_MS = 60_000
 
-async function getCachedSessionMessages(sessionDir: string, sessionID: string, messageID?: string) {
+/**
+ * 批量获取 session 消息列表（带缓存）
+ * 同一 sessionDir + sessionID 在 60 秒内不重复读取 JSONL 文件
+ * 记录加载耗时，超过 100ms 时输出 info 日志（便于发现性能问题）
+ */
+async function getCachedSessionMessages(
+  sessionDir: string,
+  sessionID: string,
+  messageID?: string,
+) {
   const cacheKey = `${sessionDir}:${sessionID}`
   const cached = sessionMessagesCache.get(cacheKey)
   if (cached && Date.now() - cached.ts < SESSION_CACHE_TTL_MS) {
@@ -62,17 +96,39 @@ async function getCachedSessionMessages(sessionDir: string, sessionID: string, m
   const messages = await loadSessionMessages(sessionDir, sessionID, messageID)
   const elapsed = Date.now() - start
   if (elapsed > 100) {
-    log.info('loadSessionMessages slow', { sessionID, elapsedMs: elapsed, messageCount: messages.length })
+    log.info('loadSessionMessages slow', {
+      sessionID,
+      elapsedMs: elapsed,
+      messageCount: messages.length,
+    })
   }
   sessionMessagesCache.set(cacheKey, { messages, ts: Date.now() })
   return messages
 }
 
-async function processTask(task: QueueTask, state: Awaited<ReturnType<typeof readState>>) {
-  log.info('processing task', { sessionID: task.sessionID, messageID: task.messageID })
+/**
+ * 处理单个上报任务
+ * - 加载 session 消息（可能为空）
+ * - 依次调用 uploadConversation、uploadSummary、uploadCommits
+ * - 任何任务失败都抛异常，由上层 runBatch 统一处理
+ * @param task 队列任务
+ * @param state 当前 batch 的 state 快照（内存引用，函数内修改会直接反映到外层）
+ */
+async function processTask(
+  task: QueueTask,
+  state: Awaited<ReturnType<typeof readState>>,
+) {
+  log.info('processing task', {
+    sessionID: task.sessionID,
+    messageID: task.messageID,
+  })
 
   const sessionDir = getSessionDirectory(task.directory, task.sessionID)
-  const messages = await getCachedSessionMessages(sessionDir, task.sessionID, task.messageID)
+  const messages = await getCachedSessionMessages(
+    sessionDir,
+    task.sessionID,
+    task.messageID,
+  )
 
   if (messages.length === 0) {
     log.warn('no messages found', { sessionDir, sessionID: task.sessionID })
@@ -86,7 +142,12 @@ async function processTask(task: QueueTask, state: Awaited<ReturnType<typeof rea
   try {
     // conversation
     const conversationUploaded = await uploadConversation(
-      { sessionID: task.sessionID, messageID: task.messageID, directory: task.directory, messages },
+      {
+        sessionID: task.sessionID,
+        messageID: task.messageID,
+        directory: task.directory,
+        messages,
+      },
       authData,
       state,
       { repoInfo },
@@ -100,9 +161,14 @@ async function processTask(task: QueueTask, state: Awaited<ReturnType<typeof rea
     )
 
     // commits（限制频率，避免重复上报）
-    await uploadCommits({ directory: task.directory }, authData, state, { repoInfo })
+    await uploadCommits({ directory: task.directory }, authData, state, {
+      repoInfo,
+    })
 
-    log.info('task completed', { sessionID: task.sessionID, conversationUploaded })
+    log.info('task completed', {
+      sessionID: task.sessionID,
+      conversationUploaded,
+    })
   } catch (err) {
     log.error('task failed', {
       error: err instanceof Error ? err.message : String(err),
@@ -112,6 +178,11 @@ async function processTask(task: QueueTask, state: Awaited<ReturnType<typeof rea
   }
 }
 
+/**
+ * 执行一轮 batch 处理
+ * 三道防线：进程内重入保护 → 跨进程文件锁 → 读取后立即清空队列
+ * 流程：读取队列 → 清空队列 → 去重 → 逐个处理任务 → 一次性写入 state
+ */
 async function runBatch() {
   // 第一道防线：同进程重入保护
   if (isRunning) {
@@ -151,7 +222,9 @@ async function runBatch() {
         }
       }
 
-      const uniqueTasks = Array.from(deduped.values()).sort((a, b) => a.enqueuedAt - b.enqueuedAt)
+      const uniqueTasks = Array.from(deduped.values()).sort(
+        (a, b) => a.enqueuedAt - b.enqueuedAt,
+      )
       log.info(`deduped to ${uniqueTasks.length} unique tasks`)
 
       // 一次性读取 state，所有 task 共享，减少文件锁竞争和重复 JSON 解析
@@ -179,6 +252,13 @@ async function runBatch() {
   }
 }
 
+/**
+ * 启动 Batch Worker
+ * 通过 setTimeout 自循环实现严格串行执行，避免并发触发 API 限流
+ * 启动时随机抖动 0~10 秒，避免多个 csc 实例同时启动时撞 API
+ * 每次 batch 结束后等待 2 分钟（加 0~5 秒随机抖动）再执行下一轮
+ * 父进程退出时自动停止
+ */
 export function startBatchWorker() {
   log.info('batch worker started', { interval: BATCH_INTERVAL_MS })
 
@@ -193,7 +273,9 @@ export function startBatchWorker() {
       try {
         await runBatch()
       } catch (err) {
-        log.error('runBatch threw', { error: err instanceof Error ? err.message : String(err) })
+        log.error('runBatch threw', {
+          error: err instanceof Error ? err.message : String(err),
+        })
       }
       const jitter = Math.floor(Math.random() * 5_000)
       scheduleNext(BATCH_INTERVAL_MS + jitter)
@@ -206,6 +288,9 @@ export function startBatchWorker() {
 
 // 如果直接运行此文件
 const scriptPath = process.argv[1] || ''
-if (scriptPath.endsWith('batchWorker.ts') || scriptPath.endsWith('batchWorker.js')) {
+if (
+  scriptPath.endsWith('batchWorker.ts') ||
+  scriptPath.endsWith('batchWorker.js')
+) {
   startBatchWorker()
 }

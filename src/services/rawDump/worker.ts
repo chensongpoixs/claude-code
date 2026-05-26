@@ -46,11 +46,20 @@ const REQUEST_TIMEOUT_MS = 30_000 // 单次 HTTP 请求超时，防止 fetch 永
 
 type RepoInfo = Awaited<ReturnType<typeof getRepoInfo>>
 
+/**
+ * 将毫秒时间戳格式化为 ISO 字符串，保留到秒级
+ * @param ms 毫秒时间戳
+ * @returns ISO 格式字符串，如 "2024-01-01T12:00:00Z"
+ */
 function formatIso(ms: number | undefined): string {
   if (!ms) return ''
   return new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z')
 }
 
+/**
+ * 从环境变量或默认配置中解析 Raw Dump API 的 Base URL
+ * 支持通过 COSTRICT_RAW_DUMP_BASE_URL 或 CSC_RAW_DUMP_BASE_URL 覆盖
+ */
 function resolveRawDumpBaseUrl(baseUrl?: string): string {
   const explicit =
     process.env.COSTRICT_RAW_DUMP_BASE_URL || process.env.CSC_RAW_DUMP_BASE_URL
@@ -74,6 +83,12 @@ function resolveRawDumpBaseUrl(baseUrl?: string): string {
   return raw.replace(/\/cloud-api$/, '')
 }
 
+/**
+ * 拼接 Raw Dump API 的完整 URL
+ * @param baseUrl API 基础地址
+ * @param endpoint API 路径，如 /raw-store/task-conversation
+ * @param isAnonymous 是否使用匿名接口（无 Authorization header）
+ */
 function getRawDumpUrl(
   baseUrl: string,
   endpoint: string,
@@ -81,11 +96,20 @@ function getRawDumpUrl(
 ): string {
   const suffix = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
   const prefix = isAnonymous
-    ? '/user-indicator/public'
+    ? '/user-indicator/public/api/v1'
     : '/user-indicator/api/v1'
   return `${baseUrl}${prefix}${suffix}`
 }
 
+/**
+ * 发送 JSON POST 请求，支持重试和本地存储模式
+ * - 本地模式：写入本地 JSON 文件，不调用服务端
+ * - 网络错误/429：最多重试 3 次，指数退避
+ * @param baseUrl API 基础地址
+ * @param headers HTTP 请求头
+ * @param endpoint API 路径
+ * @param body 请求体（会自动序列化为 JSON）
+ */
 async function postJson(
   baseUrl: string,
   headers: Headers,
@@ -167,6 +191,10 @@ async function postJson(
   throw lastError || new Error(`${endpoint} failed after retries`)
 }
 
+/**
+ * 从 JWT payload 中提取用户信息
+ * 优先使用 refresh token 中的数据（更完整），fallback 到 access token
+ */
 function parseUser(
   accessPayload: JwtPayload,
   refreshPayload?: JwtPayload | null,
@@ -191,6 +219,10 @@ function parseUser(
   }
 }
 
+/**
+ * 根据当前操作系统返回友好的 OS 名称标识
+ * darwin → MacOS, win32 → Windows, linux → Linux, 其他返回原值
+ */
 function detectOs(): string {
   const map: Record<string, string> = {
     darwin: 'MacOS',
@@ -200,6 +232,12 @@ function detectOs(): string {
   return map[process.platform] ?? process.platform
 }
 
+/**
+ * 加载 CoStrict 认证凭证，进行 token 刷新，并构建 API 请求所需的 headers
+ * - 读取本地 credentials 文件
+ * - 检查 token 是否过期，过期则自动刷新
+ * - 构造包含 Authorization、User-Agent 等的 Headers 对象
+ */
 export async function auth() {
   log.debug('auth start')
   let creds = await loadCoStrictCredentials()
@@ -290,8 +328,14 @@ export async function auth() {
   }
 }
 
-// 从 JSONL 文件加载会话消息
-// csc 的会话文件名可能是 ses_{hash}.jsonl 或 {uuid}.jsonl
+/**
+ * 从 JSONL 文件加载会话消息列表
+ * - 扫描 sessionDir 目录下所有 .jsonl 文件
+ * - 优先读取文件名包含 sessionId 的文件（减少无意义解析）
+ * - 通过 sessionId、messageId 匹配目标记录
+ * - csc 的会话文件名可能是 ses_{hash}.jsonl 或 {uuid}.jsonl
+ * @returns 匹配的 JSONL 行数组（每行是一个消息对象），无匹配则返回空数组
+ */
 export async function loadSessionMessages(
   sessionDir: string,
   sessionId: string,
@@ -364,6 +408,10 @@ export async function loadSessionMessages(
   return []
 }
 
+/**
+ * 在消息列表中查找指定 ID 的消息
+ * 支持通过 message.uuid 或 message.id 匹配
+ */
 function findMessage(
   messages: Record<string, unknown>[],
   messageID: string,
@@ -375,6 +423,11 @@ function findMessage(
   )
 }
 
+/**
+ * 查找 assistant message 对应的父级 user message
+ * 在 csc 中，user message 通常紧邻 assistant message 之前
+ * 从 assistant 位置向前遍历，找到第一个 type === 'user' 的消息
+ */
 function findParentUserMessage(
   messages: Record<string, unknown>[],
   assistantMsg: Record<string, unknown>,
@@ -388,6 +441,10 @@ function findParentUserMessage(
   return undefined
 }
 
+/**
+ * 判断本轮对话的发送者类型：agent 或 user
+ * 通过 assistant 的 mode、agent 字段、isSidechain 标记、user 的 isMeta 标记综合判断
+ */
 function detectSender(
   assistant: Record<string, unknown>,
   user: Record<string, unknown> | undefined,
@@ -408,6 +465,10 @@ function detectSender(
   return 'user'
 }
 
+/**
+ * 从消息对象中提取纯文本内容
+ * 兼容多种格式：直接 content 字符串，或 content 数组（block type === 'text'）
+ */
 function extractTextContent(msg: Record<string, unknown>): string {
   const content = (msg.message as Record<string, unknown>)?.content
   if (!Array.isArray(content)) return String(content ?? '')
@@ -417,6 +478,10 @@ function extractTextContent(msg: Record<string, unknown>): string {
     .join('\n')
 }
 
+/**
+ * 将 structured patch 格式转换为 unified diff 格式
+ * 用于将 git diff --no-ext-diff 格式的 patch 转为标准 unified diff 字符串
+ */
 function structuredPatchToUnifiedDiff(
   filePath: string,
   patches: Array<Record<string, unknown>>,
@@ -437,6 +502,10 @@ function structuredPatchToUnifiedDiff(
   return header + '\n' + hunks.join('\n') + '\n'
 }
 
+/**
+ * 根据旧字符串和新字符串生成 unified diff
+ * 用于 Edit、NotebookEdit 等工具调用的结果 diff
+ */
 function generateStringDiff(
   filePath: string,
   oldStr: string,
@@ -453,6 +522,12 @@ function generateStringDiff(
   return header + '\n' + hunk + '\n' + body + '\n'
 }
 
+/**
+ * 从 assistant message 中提取 unified diff
+ * 优先从子 user message 的 toolUseResult 获取 gitDiff.patch（已格式化的 unified diff）
+ * fallback 到 structuredPatch 转换或从 tool_use input 参数生成 diff
+ * @returns 包含 diff 字符串、行数、涉及文件的结构
+ */
 function extractToolDiff(
   msg: Record<string, unknown>,
   allMessages?: Record<string, unknown>[],
@@ -594,6 +669,10 @@ function extractToolDiff(
   return { diff, diff_lines: countDiffLines(diff), files: Array.from(files) }
 }
 
+/**
+ * 从 assistant message 中提取 token 使用量
+ * 包含 input_tokens、output_tokens、cache 相关的 token 数量
+ */
 function extractUsage(msg: Record<string, unknown>) {
   const usage = (msg.message as Record<string, unknown>)?.usage as
     | Record<string, number>
@@ -606,26 +685,78 @@ function extractUsage(msg: Record<string, unknown>) {
   }
 }
 
-function extractError(msg: Record<string, unknown>) {
-  const error = msg.error as Record<string, unknown> | undefined
-  if (!error) return {}
-
-  const name = String(error.name ?? 'UnknownError')
-  const message = typeof error.message === 'string' ? error.message : name
-  const errorCode =
-    name === 'ProviderAuthError'
-      ? 401
-      : name === 'ContextOverflowError' || name === 'MessageOutputLengthError'
-        ? 413
-        : name === 'MessageAbortedError'
-          ? 499
-          : name === 'APIError' && typeof error.statusCode === 'number'
-            ? error.statusCode
-            : 500
-
-  return { error_code: errorCode, error_reason: message }
+const SDK_ERROR_CODE_MAP: Record<string, number> = {
+  authentication_failed: 401,
+  billing_error: 402,
+  rate_limit: 429,
+  invalid_request: 400,
+  server_error: 500,
+  max_output_tokens: 413,
+  unknown: 500,
 }
 
+/**
+ * 从 assistant message 中提取错误信息
+ * 支持三种格式：字符串 error（SDK 标准格式）、Error 对象（CoStrict provider 格式）、isApiErrorMessage 标记
+ * 将错误映射为 HTTP 状态码和错误原因字符串
+ */
+function extractError(msg: Record<string, unknown>): {
+  error_code?: number
+  error_reason?: string
+} {
+  const error = msg.error
+
+  // Case 1: msg.error is a string (SDKAssistantMessageError — normal path)
+  if (typeof error === 'string') {
+    const errorCode = SDK_ERROR_CODE_MAP[error] ?? 500
+    // Prefer errorDetails (diagnostic info) over the raw string
+    const errorDetails = msg.errorDetails
+    const reason =
+      typeof errorDetails === 'string' && errorDetails ? errorDetails : error
+    return { error_code: errorCode, error_reason: reason }
+  }
+
+  // Case 2: msg.error is an Error object (CoStrict provider —不规范存储)
+  if (typeof error === 'object' && error !== null) {
+    const err = error as Record<string, unknown>
+    // Try apiError field first for coarse classification
+    const apiError = msg.apiError
+    if (typeof apiError === 'string' && apiError === 'max_output_tokens') {
+      const reason =
+        typeof err.message === 'string' ? err.message : 'max_output_tokens'
+      return { error_code: 413, error_reason: reason }
+    }
+    const name = String(err.name ?? 'UnknownError')
+    const errMessage = typeof err.message === 'string' ? err.message : name
+    const errorCode =
+      name === 'ProviderAuthError'
+        ? 401
+        : name === 'ContextOverflowError' || name === 'MessageOutputLengthError'
+          ? 413
+          : name === 'MessageAbortedError'
+            ? 499
+            : name === 'APIError' && typeof err.statusCode === 'number'
+              ? err.statusCode
+              : 500
+    return { error_code: errorCode, error_reason: errMessage }
+  }
+
+  // Case 3: no error field, but marked as API error (e.g. image size errors)
+  if (msg.isApiErrorMessage) {
+    return { error_code: 500, error_reason: 'api_error_unclassified' }
+  }
+
+  return {}
+}
+
+/**
+ * 上报一轮对话详情到 /raw-store/task-conversation
+ * - 在 messages 中查找目标 assistant message（优先按 ID，找不到则用最后一个 assistant）
+ * - 构建 conversation payload 并发送 POST 请求
+ * - 跳过无实质内容的中间轮次（无用户输入、无 assistant 输出、无 diff）
+ * - 上报成功后在 state 中设置去重标记
+ * @returns 是否成功上报（false 表示跳过或查找失败，不抛异常）
+ */
 export async function uploadConversation(
   payload: {
     sessionID: string
@@ -783,6 +914,12 @@ export async function uploadConversation(
 
 const SUMMARY_DEDUP_WINDOW_MS = 5 * 60 * 1000 // 同一 session 5 分钟内 summary 只上报一次
 
+/**
+ * 上报一个 session 的摘要信息到 /raw-store/task-summary
+ * 摘要以 session 为维度，5 分钟内同一 session 只上报一次（通过 state.summary 去重）
+ * 包含 session 的起止时间、用户信息、客户端信息等
+ * 即使 conversation 上报失败，summary 仍会独立上报
+ */
 export async function uploadSummary(
   payload: {
     sessionID: string
@@ -833,6 +970,14 @@ export async function uploadSummary(
   log.info('summary uploaded', { task_id: payload.sessionID })
 }
 
+/**
+ * 上报目录下的新提交到 /raw-store/commit
+ * - 获取上次上报的 commit_id 作为起点，本次只上报之后的提交
+ * - 每次最多上报 50 个 commit，避免触发限流
+ * - 每个 commit 单独 POST，成功后立即更新 state.commits 进度
+ * - 批次间添加延迟（每 10 个 commit 暂停 500ms）避免并发过高
+ * @returns 上报的 commit 数量
+ */
 export async function uploadCommits(
   payload: {
     directory: string
@@ -913,21 +1058,44 @@ export async function uploadCommits(
   return commits.length
 }
 
+/**
+ * 从环境变量中解析 worker 入口传入的 payload
+ * 抛出错误如果环境变量不存在或 JSON 解析失败
+ */
 function parseWorkerPayload(): RawDumpEventPayload {
   const raw = process.env[RAW_DUMP_EVENT_ENV_KEY]
   if (!raw) throw new Error('missing raw dump payload')
   return JSON.parse(raw) as RawDumpEventPayload
 }
 
+/**
+ * 获取 CoStrict 配置目录（~.claude），支持环境变量 CLAUDE_CONFIG_HOME 覆盖
+ */
 export function getClaudeConfigHomeDir(): string {
   return process.env.CLAUDE_CONFIG_HOME || path.join(os.homedir(), '.claude')
 }
 
+/**
+ * 将目录路径规范化为安全的车间目录名
+ * 将路径中的 / 替换为 -，避免路径分隔符在文件系统操作中引发问题
+ * 如 /Users/linkai/code/csc → -Users-linkai-code-csc
+ */
 function normalizeProjectPath(dir: string): string {
   // 将 /Users/linkai/code/csc 转换为 -Users-linkai-code-csc
   return dir.replace(/\//g, '-')
 }
 
+/**
+ * 解析 session 文件所在目录
+ * 按优先级尝试多个候选路径，返回第一个存在的目录：
+ * 1. ~/.claude/projects/{normalized-path}/
+ * 2. ~/.claude/transcripts/
+ * 3. ~/.claude/sessions/
+ * 4. {directory}/.claude/sessions/
+ * 5. {directory}/.claude/
+ * 6. {directory} 本身
+ * 7. 环境变量 CSC_SESSION_DIR 指定路径
+ */
 export function getSessionDirectory(
   directory: string,
   sessionID: string,
@@ -947,6 +1115,15 @@ export function getSessionDirectory(
   return candidates.find(d => d) || directory
 }
 
+/**
+ * Raw Dump Worker 入口函数
+ * 在独立进程中运行，执行完整的上报流程：
+ * 1. 解析环境变量中的 payload
+ * 2. 加载 session 消息列表
+ * 3. 加载/上报 conversation、summary、commits
+ * 4. 写入 state 文件
+ * 任何阶段失败都会记录日志但不会抛异常给主进程
+ */
 export async function runRawDumpWorker() {
   try {
     const payload = parseWorkerPayload()
@@ -1031,6 +1208,12 @@ export async function runRawDumpWorker() {
   }
 }
 
+/**
+ * 认证兜底逻辑，优先尝试正常认证，失败后根据模式降级：
+ * - 本地模式（isLocalDumpMode）：使用假的匿名凭证，允许本地存储模式运行
+ * - 非本地模式：降级为匿名接口（无 Authorization header）
+ * 确保即使认证失败，上报流程仍可继续
+ */
 export async function authWithFallback(): Promise<
   Awaited<ReturnType<typeof auth>>
 > {

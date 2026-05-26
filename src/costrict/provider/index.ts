@@ -54,6 +54,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
+function mapErrorToSDKError(
+  error: unknown,
+): SDKAssistantMessageError | undefined {
+  if (!(error instanceof Error)) return undefined
+  // OpenAI SDK errors expose .status
+  const status = (error as Record<string, unknown>).status
+  if (typeof status === 'number') {
+    if (status === 401 || status === 403) return 'authentication_failed'
+    if (status === 429) return 'rate_limit'
+    if (status === 402) return 'billing_error'
+    if (status === 400) return 'invalid_request'
+    return 'server_error'
+  }
+  return 'unknown'
+}
+
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return isRecord(value)
 }
@@ -453,10 +469,7 @@ export async function* queryModelCoStrict(
         ? 'CoStrict API Error: The current model does not support image input. Switch to a multimodal or vision-capable model and try again.'
         : `CoStrict API Error: ${errorMsg}`,
       apiError: 'api_error',
-      error:
-        error instanceof Error
-          ? (error as unknown as SDKAssistantMessageError)
-          : undefined,
+      error: mapErrorToSDKError(error),
     })
   }
 }
