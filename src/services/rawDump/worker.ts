@@ -37,6 +37,7 @@ import type {
   CommitPayload,
   ConversationPayload,
   JwtPayload,
+  StatisticsPayload,
   SummaryPayload,
 } from './types.js'
 
@@ -1070,6 +1071,64 @@ export async function uploadCommits(
   }
 
   return commits.length
+}
+
+const STATS_DEDUP_WINDOW_MS = 60 * 60 * 1000 // 同一 session 1 小时内只上报一次 statistics
+
+export async function uploadStatistics(
+  payload: {
+    sessionID: string
+    directory: string
+    sessionCount: number
+    conversationCount: number
+    upstreamTokens: number
+    downstreamTokens: number
+    startTime: number
+    endTime: number
+  },
+  authData: Awaited<ReturnType<typeof auth>>,
+  state: Awaited<ReturnType<typeof readState>>,
+): Promise<void> {
+  const key = `stats:${payload.sessionID}`
+  const lastReported = state.summary[key]
+  if (
+    lastReported &&
+    Date.now() - new Date(lastReported).getTime() < STATS_DEDUP_WINDOW_MS
+  ) {
+    log.debug('statistics skipped: reported recently', {
+      task_id: payload.sessionID,
+      lastReported,
+    })
+    return
+  }
+
+  const body: StatisticsPayload = {
+    task_id: payload.sessionID,
+    start_time: formatIso(payload.startTime),
+    end_time: formatIso(payload.endTime),
+    ...authData.user,
+    client_id: authData.clientId,
+    client_version: authData.version,
+    session_count: payload.sessionCount,
+    conversation_count: payload.conversationCount,
+    upstream_tokens: payload.upstreamTokens,
+    downstream_tokens: payload.downstreamTokens,
+  }
+
+  await postJson(
+    authData.baseUrl,
+    authData.headers,
+    '/raw-store/statistics',
+    body,
+  )
+  state.summary[key] = new Date().toISOString()
+  log.info('statistics uploaded', {
+    task_id: payload.sessionID,
+    session_count: payload.sessionCount,
+    conversation_count: payload.conversationCount,
+    upstream_tokens: payload.upstreamTokens,
+    downstream_tokens: payload.downstreamTokens,
+  })
 }
 
 /**

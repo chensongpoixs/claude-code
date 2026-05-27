@@ -1,21 +1,22 @@
 /**
  * Raw Dump 磁盘状态管理
- * 用于 conversation、summary、commits 的去重，以及错误聚合
+ * 用于 conversation、summary、commits 的去重
  * 通过文件锁保证多进程并发读写安全
  *
- * state.errors：按 sessionID:messageID 键控的错误聚合表
- * - 每批次累加 count，记录最新错误消息和时间戳
- * - 超过最大重试次数时由 batchWorker 写入 dead letter
+ * 错误追踪（dead letter）：
+ * - 超过最大重试次数的任务追加写入 dead letter jsonl 文件
+ * - 路径: ~/.claude/raw-dump/csc-dead-letter.jsonl
  */
 
 import { promises as fs, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { RawDumpState } from './types.js'
+import type { RawDumpState, DeadLetterEntry } from './types.js'
 
 const STATE_DIR = path.join(os.homedir(), '.claude', 'raw-dump')
 const STATE_FILE = path.join(STATE_DIR, 'csc-state.json')
 const STATE_LOCK_FILE = path.join(STATE_DIR, 'csc-state.lock')
+const DEAD_LETTER_FILE = path.join(STATE_DIR, 'csc-dead-letter.jsonl')
 
 /**
  * 创建空的 RawDumpState 对象
@@ -26,8 +27,6 @@ function createEmptyState(): RawDumpState {
     conversation: {},
     summary: {},
     commits: {},
-    errors: {},
-    // summary 值为 RFC3339 格式时间戳字符串，解析时无需转换
   }
 }
 
@@ -106,7 +105,6 @@ export async function readState(): Promise<RawDumpState> {
         conversation: parsed.conversation ?? {},
         summary: parsed.summary ?? {},
         commits: parsed.commits ?? {},
-        errors: parsed.errors ?? {},
       }
     } catch {
       return createEmptyState()
@@ -124,5 +122,25 @@ export async function writeState(state: RawDumpState): Promise<void> {
   return withStateLock(async () => {
     await fs.mkdir(STATE_DIR, { recursive: true })
     await fs.writeFile(STATE_FILE, JSON.stringify(state, null, 2), 'utf-8')
+  })
+}
+
+export async function readDeadLetter(): Promise<DeadLetterEntry[]> {
+  try {
+    const text = await fs.readFile(DEAD_LETTER_FILE, 'utf-8')
+    return text
+      .split('\n')
+      .filter(Boolean)
+      .map(line => JSON.parse(line) as DeadLetterEntry)
+  } catch {
+    return []
+  }
+}
+
+export async function appendDeadLetter(entry: DeadLetterEntry): Promise<void> {
+  await fs.mkdir(STATE_DIR, { recursive: true })
+  await fs.writeFile(DEAD_LETTER_FILE, JSON.stringify(entry) + '\n', {
+    flag: 'a',
+    encoding: 'utf-8',
   })
 }

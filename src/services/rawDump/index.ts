@@ -3,7 +3,10 @@
  * 队列模式：主进程只 enqueue，单 batch worker 顺序消费
  */
 
-import { getRawDumpMode, RAW_DUMP_MODE } from './localStorage.js'
+import {
+  getRawDumpMode,
+  RAW_DUMP_MODE,
+} from './localStorage.js'
 import { enqueue } from './queue.js'
 import { spawnBatchWorker } from './spawn.js'
 import { startBatchWorker } from './batchWorker.js'
@@ -101,5 +104,44 @@ export function reportSession(sessionID: string, directory: string): void {
   if (!isEnabled()) return
   if (!shouldEnqueue(sessionID, '__summary__')) return
   enqueue({ sessionID, messageID: '__summary__', directory })
+  ensureBatchWorker()
+}
+
+export interface StatisticsData {
+  sessionCount: number
+  conversationCount: number
+  upstreamTokens: number
+  downstreamTokens: number
+  startTime: number
+  endTime: number
+}
+
+const lastReportStatsMap = new Map<string, number>()
+const STATS_DEBOUNCE_MS = 60_000 // 同一 session 1 分钟内不重复 enqueue
+
+/**
+ * 上报对账统计数据（session数、conversation数、token数）
+ * 通过特殊 messageID '__statistics__' 标识入队
+ */
+export function reportStatistics(
+  sessionID: string,
+  directory: string,
+  data: StatisticsData,
+): void {
+  if (!isEnabled()) return
+  const key = `${sessionID}:__statistics__`
+  const now = Date.now()
+  const last = lastReportStatsMap.get(key)
+  if (last && now - last < STATS_DEBOUNCE_MS) {
+    log.debug('reportStatistics debounced', { sessionID, lastMs: now - last })
+    return
+  }
+  lastReportStatsMap.set(key, now)
+  enqueue({
+    sessionID,
+    messageID: '__statistics__',
+    directory,
+    statsData: data,
+  })
   ensureBatchWorker()
 }

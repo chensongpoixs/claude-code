@@ -12,6 +12,7 @@
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'path'
+import type { StatisticsData } from './index.js'
 
 const QUEUE_FILE = path.join(
   os.homedir(),
@@ -29,6 +30,7 @@ export interface QueueTask {
   directory: string
   enqueuedAt: number
   attemptCount: number
+  statsData?: StatisticsData
 }
 
 // ----------- 内存中的队列 -----------

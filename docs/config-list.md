@@ -194,8 +194,8 @@
 | `CSC_RAW_DUMP_BASE_URL` | string | - | 自定义上报服务端地址 |
 | `COSTRICT_RAW_DUMP_BASE_URL` | string | - | 兼容 opencode 的自定义上报地址 |
 | `COSTRICT_BASE_URL` | string | `https://zgsm.sangfor.com` | CoStrict 服务地址 |
-| `CSC_RAW_DUMP_LOCAL_MODE` | boolean | `false` | **本地留存模式**：数据只写入本地文件，不上报服务端 |
-| `CSC_RAW_DUMP_LOCAL_DIR` | string | `~/.claude/raw-dump-local` | 本地留存目录 |
+| `CSC_RAW_DUMP_MODE` | boolean | `false` | **本地留存模式**：数据只写入本地文件，不上报服务端 |
+| `CSC_RAW_DUMP_DIR` | string | `~/.claude/raw-dump` | 本地留存目录 |
 
 ### Bash/终端
 

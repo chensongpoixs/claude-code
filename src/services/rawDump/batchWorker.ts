@@ -16,6 +16,7 @@ import {
   uploadConversation,
   uploadSummary,
   uploadCommits,
+  uploadStatistics,
   authWithFallback,
 } from './worker.js'
 import {
@@ -29,8 +30,7 @@ import {
   MAX_ATTEMPTS,
   type QueueTask,
 } from './queue.js'
-import { readState, writeState } from './state.js'
-import type { RawDumpError } from './types.js'
+import { readState, writeState, appendDeadLetter } from './state.js'
 import { getSessionDirectory, loadSessionMessages } from './worker.js'
 import { getRepoInfo } from './git.js'
 import { createLogger } from './logger.js'
@@ -134,6 +134,25 @@ async function processTask(
   const authData = await authWithFallback()
   const repoInfo = await getCachedRepoInfo(task.directory)
 
+  if (task.messageID === '__statistics__' && task.statsData) {
+    await uploadStatistics(
+      {
+        sessionID: task.sessionID,
+        directory: task.directory,
+        sessionCount: task.statsData.sessionCount,
+        conversationCount: task.statsData.conversationCount,
+        upstreamTokens: task.statsData.upstreamTokens,
+        downstreamTokens: task.statsData.downstreamTokens,
+        startTime: task.statsData.startTime,
+        endTime: task.statsData.endTime,
+      },
+      authData,
+      state,
+    )
+    log.info('statistics task completed', { sessionID: task.sessionID })
+    return
+  }
+
   const conversationUploaded = await uploadConversation(
     {
       sessionID: task.sessionID,
@@ -156,7 +175,10 @@ async function processTask(
     repoInfo,
   })
 
-  log.info('task completed', { sessionID: task.sessionID, conversationUploaded })
+  log.info('task completed', {
+    sessionID: task.sessionID,
+    conversationUploaded,
+  })
 }
 
 /**
@@ -218,13 +240,16 @@ async function runBatch() {
           })
 
           if (task.attemptCount >= MAX_ATTEMPTS) {
-            // 彻底失败：记录错误，从队列移除
-            state.errors[key] = {
-              message: errorMsg,
-              count: task.attemptCount,
-              lastAt: new Date().toISOString(),
+            // 彻底失败：写入 dead letter，从队列移除
+            await appendDeadLetter({
+              sessionID: task.sessionID,
+              messageID: task.messageID,
+              directory: task.directory,
+              attemptCount: task.attemptCount,
+              error: errorMsg,
               endpoint: extractEndpointFromError(errorMsg),
-            } satisfies RawDumpError
+              failedAt: new Date().toISOString(),
+            })
             removeTask(key)
             log.warn('task permanently failed, removed from queue', {
               sessionID: task.sessionID,
@@ -232,12 +257,6 @@ async function runBatch() {
             })
           } else {
             // 失败但未超限：attemptCount++ 写回文件，下次重试
-            state.errors[key] = {
-              message: errorMsg,
-              count: task.attemptCount,
-              lastAt: new Date().toISOString(),
-              endpoint: extractEndpointFromError(errorMsg),
-            } satisfies RawDumpError
             await flushQueue()
           }
         }
@@ -279,15 +298,17 @@ export function startBatchWorker() {
   }
 
   // 启动时加载队列 + 随机抖动
-  loadQueue().then(() => {
-    log.info('queue loaded', { count: getQueue().length })
-    scheduleNext(Math.floor(Math.random() * 10_000))
-  }).catch(err => {
-    log.error('failed to load queue', {
-      error: err instanceof Error ? err.message : String(err),
+  loadQueue()
+    .then(() => {
+      log.info('queue loaded', { count: getQueue().length })
+      scheduleNext(Math.floor(Math.random() * 10_000))
     })
-    process.exit(1)
-  })
+    .catch(err => {
+      log.error('failed to load queue', {
+        error: err instanceof Error ? err.message : String(err),
+      })
+      process.exit(1)
+    })
 }
 
 const scriptPath = process.argv[1] || ''

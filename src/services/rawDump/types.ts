@@ -7,10 +7,9 @@
  * - summary：会话统计（按 session 去重，5 分钟内只上报一次）
  * - commits：提交记录（按 commit ID 去重）
  *
- * 错误追踪：
- * - 上报失败的任务写入 failed queue，最多重试 MAX_RETRIES 次
- * - 超过最大重试次数的任务移入 dead letter 文件
- * - 所有错误聚合到 state.errors，按 sessionID:messageID 键控
+ * 错误追踪（dead letter）：
+ * - 超过最大重试次数的任务追加写入 dead letter jsonl 文件
+ * - 路径: ~/.claude/raw-dump/csc-dead-letter.jsonl
  */
 
 export const RAW_DUMP_EVENT_ENV_KEY = '__CSC_RAW_DUMP_EVENT__'
@@ -25,14 +24,16 @@ export interface RawDumpState {
   conversation: Record<string, true>
   summary: Record<string, string> // RFC3339 时间戳，如 "2024-01-01T12:00:00.000Z"
   commits: Record<string, string>
-  errors: Record<string, RawDumpError>
 }
 
-export interface RawDumpError {
-  message: string
-  count: number
-  lastAt: string
+export interface DeadLetterEntry {
+  sessionID: string
+  messageID: string
+  directory: string
+  attemptCount: number
+  error: string
   endpoint?: string
+  failedAt: string
 }
 
 export interface JwtPayload {
@@ -106,4 +107,18 @@ export interface CommitPayload {
   comment: string
   subject: string
   parent_ids: string[]
+}
+
+export interface StatisticsPayload {
+  task_id: string
+  start_time: string
+  end_time: string
+  user_id: string
+  user_name: string
+  client_id: string
+  client_version: string
+  session_count: number
+  conversation_count: number
+  upstream_tokens: number
+  downstream_tokens: number
 }
