@@ -225,7 +225,7 @@ if (!existing || task.enqueuedAt > existing.enqueuedAt) {
 
 ### 2. Conversation 去重（磁盘）
 ```typescript
-// ~/.claude/csc-raw-dump-state.json
+// ~/.claude/raw-dump/csc-state.json
 {
   "conversation": {
     "taskID:requestID": true
@@ -301,21 +301,36 @@ import { refreshCoStrictToken } from '../../costrict/provider/token.js'
 | `CSC_RAW_DUMP_BASE_URL` | 自定义上报 base URL | 从凭证读取 |
 | `COSTRICT_RAW_DUMP_BASE_URL` | 兼容 opencode 的自定义 URL | 从凭证读取 |
 | `COSTRICT_BASE_URL` | CoStrict 服务地址 | `https://zgsm.sangfor.com` |
-| `CSC_RAW_DUMP_LOCAL_MODE` | 本地留存模式，数据只写入本地文件不上报服务端 | `false` |
-| `CSC_RAW_DUMP_LOCAL_DIR` | 本地留存目录 | `~/.claude/raw-dump-local` |
+| `CSC_RAW_DUMP_MODE` | 上报模式：`0`=禁用, `1`=remote, `2`=local, `3`=both | `1`（Remote） |
+| `CSC_RAW_DUMP_DIR` | 本地留存目录（mode=2/3 时使用） | `~/.claude/raw-dump` |
+
+---
+
+## 上报模式（`CSC_RAW_DUMP_MODE`）
+
+`CSC_RAW_DUMP_MODE` 环境变量控制数据输出行为，支持 4 种模式：
+
+| 值 | 模式 | 说明 |
+|----|------|------|
+| `0` | 禁用（Disabled） | 完全跳过，不写入队列、不触发任何 HTTP 请求 |
+| `1` | 远程上报（Remote） | 默认值，数据 POST 到 CoStrict 服务端 |
+| `2` | 本地留存（Local） | 数据只写入本地 JSON 文件，不上报服务端 |
+| `3` | 双写（Both） | 同时写入本地文件和上报服务端 |
+
+默认值为 `1`（Remote），即正常运行时数据上报到 CoStrict 服务端。
 
 ---
 
 ## 本地留存模式（调试排障）
 
-通过环境变量开启，开启后数据**不上报服务端**，仅写入本地 JSON 文件：
+通过设置 `CSC_RAW_DUMP_MODE=2` 或 `3` 开启，开启后数据写入本地 JSON 文件：
 
 ```bash
 # 开启本地留存模式
-export CSC_RAW_DUMP_LOCAL_MODE=1
+export CSC_RAW_DUMP_MODE=2
 
-# 可选：自定义留存目录（默认 ~/.claude/raw-dump-local）
-export CSC_RAW_DUMP_LOCAL_DIR=/tmp/raw-dump-debug
+# 可选：自定义留存目录(默认 ~/.claude/raw-dump)
+export CSC_RAW_DUMP_DIR=/tmp/raw-dump-debug
 ```
 
 留存文件结构：
@@ -352,7 +367,7 @@ export CSC_RAW_DUMP_LOCAL_DIR=/tmp/raw-dump-debug
 
 ### 状态文件
 ```
-~/.claude/csc-raw-dump-state.json
+~/.claude/raw-dump/csc-state.json
 ```
 
 内容格式：
@@ -373,7 +388,7 @@ export CSC_RAW_DUMP_LOCAL_DIR=/tmp/raw-dump-debug
 
 ### 日志文件
 ```
-~/.claude/csc-raw-dump.log
+~/.claude/raw-dump/csc-raw-dump.log
 ```
 
 主进程和 batch worker 的日志都追加写入该文件。由于 worker 是 detached 进程（`stdio: 'ignore'`），日志只能通过文件查看。
@@ -431,7 +446,7 @@ export CSC_RAW_DUMP_LOCAL_DIR=/tmp/raw-dump-debug
 export CSC_RAW_DUMP_DEBUG=1
 
 # 查看日志
-tail -f ~/.claude/csc-raw-dump.log
+tail -f ~/.claude/raw-dump/csc-raw-dump.log
 ```
 
 关键日志标识：
@@ -443,11 +458,11 @@ tail -f ~/.claude/csc-raw-dump.log
 常用排查命令：
 ```bash
 # 查看 state 文件
-cat ~/.claude/csc-raw-dump-state.json
+cat ~/.claude/raw-dump/csc-state.json
 
 # 查看队列文件
-cat ~/.claude/csc-raw-dump-queue.jsonl
+cat ~/.claude/raw-dump/csc-work-queue.json
 
 # 查看是否有 worker 在运行（锁文件）
-cat ~/.claude/csc-raw-dump.lock
+cat ~/.claude/raw-dump/csc-work-queue.lock
 ```

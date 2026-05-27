@@ -7,7 +7,7 @@ import { appendFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-const LOG_FILE = path.join(os.homedir(), '.claude', 'csc-raw-dump.log')
+const LOG_FILE = path.join(os.homedir(), '.claude', 'raw-dump', 'csc-raw-dump.log')
 
 function isDebugEnabled(): boolean {
   const v = process.env.CSC_RAW_DUMP_DEBUG
@@ -18,7 +18,9 @@ export function createLogger(prefix: string) {
   const enabled = isDebugEnabled()
 
   function write(level: string, msg: string, meta?: Record<string, unknown>) {
-    if (!enabled) return
+    // error 和 warn 级别始终输出，不受 DEBUG 开关控制
+    const alwaysWrite = level === 'error' || level === 'warn'
+    if (!alwaysWrite && !enabled) return
     const timestamp = new Date().toISOString()
     const metaStr = meta ? ` ${JSON.stringify(meta)}` : ''
     const line = `[${timestamp}] [${prefix}:${level}] ${msg}${metaStr}\n`

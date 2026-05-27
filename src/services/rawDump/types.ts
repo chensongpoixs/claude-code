@@ -1,6 +1,16 @@
 /**
  * Raw Dump 上报类型定义
  * 与框架解耦，不依赖任何 UI 或特定运行时
+ *
+ * 三类上报任务：
+ * - conversation：对话明细（request/response/diff）
+ * - summary：会话统计（按 session 去重，5 分钟内只上报一次）
+ * - commits：提交记录（按 commit ID 去重）
+ *
+ * 错误追踪：
+ * - 上报失败的任务写入 failed queue，最多重试 MAX_RETRIES 次
+ * - 超过最大重试次数的任务移入 dead letter 文件
+ * - 所有错误聚合到 state.errors，按 sessionID:messageID 键控
  */
 
 export const RAW_DUMP_EVENT_ENV_KEY = '__CSC_RAW_DUMP_EVENT__'
@@ -13,8 +23,16 @@ export interface RawDumpEventPayload {
 
 export interface RawDumpState {
   conversation: Record<string, true>
-  summary: Record<string, number>
+  summary: Record<string, string> // RFC3339 时间戳，如 "2024-01-01T12:00:00.000Z"
   commits: Record<string, string>
+  errors: Record<string, RawDumpError>
+}
+
+export interface RawDumpError {
+  message: string
+  count: number
+  lastAt: string
+  endpoint?: string
 }
 
 export interface JwtPayload {

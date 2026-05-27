@@ -3,7 +3,7 @@
  * 队列模式：主进程只 enqueue，单 batch worker 顺序消费
  */
 
-import { isLocalDumpMode } from './localStorage.js'
+import { getRawDumpMode, RAW_DUMP_MODE } from './localStorage.js'
 import { enqueue } from './queue.js'
 import { spawnBatchWorker } from './spawn.js'
 import { startBatchWorker } from './batchWorker.js'
@@ -19,13 +19,13 @@ const ENQUEUE_DEBOUNCE_MS = 5_000
 
 /**
  * 判断 Raw Dump 是否启用
- * - 本地调试模式（isLocalDumpMode）自动启用
+ * - mode=0 时不输出（完全禁用）
+ * - mode=1/2/3 时启用
  * - 环境变量 CSC_DISABLE_RAW_DUMP 或 COSTRICT_DISABLE_RAW_DUMP 为 '1'/'true' 时禁用
- * - 默认启用
+ * - 默认 mode=1（remote only）
  */
 function isEnabled(): boolean {
-  // 本地调试模式自动启用
-  if (isLocalDumpMode()) return true
+  if (getRawDumpMode() === RAW_DUMP_MODE.DISABLED) return false
   // 显式禁用
   if (
     process.env.CSC_DISABLE_RAW_DUMP === '1' ||
@@ -37,7 +37,7 @@ function isEnabled(): boolean {
     process.env.COSTRICT_DISABLE_RAW_DUMP === 'true'
   )
     return false
-  // 默认启用 raw dump
+  // 默认启用
   return true
 }
 

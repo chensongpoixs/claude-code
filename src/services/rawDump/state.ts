@@ -1,7 +1,11 @@
 /**
  * Raw Dump 磁盘状态管理
- * 用于 conversation、summary 和 commits 的去重
+ * 用于 conversation、summary、commits 的去重，以及错误聚合
  * 通过文件锁保证多进程并发读写安全
+ *
+ * state.errors：按 sessionID:messageID 键控的错误聚合表
+ * - 每批次累加 count，记录最新错误消息和时间戳
+ * - 超过最大重试次数时由 batchWorker 写入 dead letter
  */
 
 import { promises as fs, readFileSync, writeFileSync } from 'node:fs'
@@ -9,9 +13,9 @@ import os from 'node:os'
 import path from 'node:path'
 import type { RawDumpState } from './types.js'
 
-const STATE_DIR = path.join(os.homedir(), '.claude')
-const STATE_FILE = path.join(STATE_DIR, 'csc-raw-dump-state.json')
-const STATE_LOCK_FILE = path.join(STATE_DIR, 'csc-raw-dump-state.lock')
+const STATE_DIR = path.join(os.homedir(), '.claude', 'raw-dump')
+const STATE_FILE = path.join(STATE_DIR, 'csc-state.json')
+const STATE_LOCK_FILE = path.join(STATE_DIR, 'csc-state.lock')
 
 /**
  * 创建空的 RawDumpState 对象
@@ -22,6 +26,8 @@ function createEmptyState(): RawDumpState {
     conversation: {},
     summary: {},
     commits: {},
+    errors: {},
+    // summary 值为 RFC3339 格式时间戳字符串，解析时无需转换
   }
 }
 
@@ -100,6 +106,7 @@ export async function readState(): Promise<RawDumpState> {
         conversation: parsed.conversation ?? {},
         summary: parsed.summary ?? {},
         commits: parsed.commits ?? {},
+        errors: parsed.errors ?? {},
       }
     } catch {
       return createEmptyState()

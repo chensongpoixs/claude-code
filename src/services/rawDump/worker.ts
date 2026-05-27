@@ -30,7 +30,7 @@ import {
   toCommitComment,
 } from './git.js'
 import { createLogger } from './logger.js'
-import { isLocalDumpMode, writeLocalDump } from './localStorage.js'
+import { getRawDumpMode, RAW_DUMP_MODE, writeLocalDump } from './localStorage.js'
 import { readState, writeState } from './state.js'
 import { RAW_DUMP_EVENT_ENV_KEY, type RawDumpEventPayload } from './types.js'
 import type {
@@ -116,13 +116,21 @@ async function postJson(
   endpoint: string,
   body: object,
 ): Promise<void> {
-  if (isLocalDumpMode()) {
-    const type =
-      endpoint === '/raw-store/task-conversation'
-        ? 'conversation'
-        : endpoint === '/raw-store/task-summary'
-          ? 'summary'
-          : 'commit'
+  const mode = getRawDumpMode()
+
+  if (mode === RAW_DUMP_MODE.DISABLED) {
+    log.debug(`dump disabled, skipping ${endpoint}`)
+    return
+  }
+
+  const type =
+    endpoint === '/raw-store/task-conversation'
+      ? 'conversation'
+      : endpoint === '/raw-store/task-summary'
+        ? 'summary'
+        : 'commit'
+
+  if (mode === RAW_DUMP_MODE.LOCAL || mode === RAW_DUMP_MODE.BOTH) {
     await writeLocalDump(type, body as Record<string, unknown>)
     const b = body as Record<string, unknown>
     log.info(`local dump: ${type} saved`, {
@@ -130,8 +138,9 @@ async function postJson(
       request_id: b.request_id,
       commit_id: b.commit_id,
     })
-    return
   }
+
+  // REMOTE / BOTH 模式下继续执行 remote 上报逻辑
 
   const isAnonymous = !headers.get('Authorization')
   const url = getRawDumpUrl(baseUrl, endpoint, isAnonymous)
@@ -935,7 +944,12 @@ export async function uploadSummary(
   })
 
   const lastReported = state.summary[payload.sessionID]
-  if (lastReported && Date.now() - lastReported < SUMMARY_DEDUP_WINDOW_MS) {
+  if (
+    lastReported &&
+    Date.now() -
+      new Date(lastReported).getTime() <
+      SUMMARY_DEDUP_WINDOW_MS
+  ) {
     log.info('summary skipped: reported recently', {
       task_id: payload.sessionID,
       lastReported,
@@ -966,7 +980,7 @@ export async function uploadSummary(
     '/raw-store/task-summary',
     body,
   )
-  state.summary[payload.sessionID] = Date.now()
+  state.summary[payload.sessionID] = new Date().toISOString()
   log.info('summary uploaded', { task_id: payload.sessionID })
 }
 
@@ -1081,8 +1095,10 @@ export function getClaudeConfigHomeDir(): string {
  * 如 /Users/linkai/code/csc → -Users-linkai-code-csc
  */
 function normalizeProjectPath(dir: string): string {
-  // 将 /Users/linkai/code/csc 转换为 -Users-linkai-code-csc
-  return dir.replace(/\//g, '-')
+  // 将路径中的路径分隔符替换为 -，统一处理 / 和 \ (Windows)
+  // 如 /Users/linkai/code/csc → -Users-linkai-code-csc
+  // 如 D:\shenma\zgsm-ai\csc → D--shenma-zgsm-ai-csc (drive letter 后的 \ 也转为 -)
+  return dir.replace(/:/, '-').replace(/[\/\\]/g, '-')
 }
 
 /**
@@ -1210,7 +1226,7 @@ export async function runRawDumpWorker() {
 
 /**
  * 认证兜底逻辑，优先尝试正常认证，失败后根据模式降级：
- * - 本地模式（isLocalDumpMode）：使用假的匿名凭证，允许本地存储模式运行
+ * - 本地模式（mode >= 2）：使用假的匿名凭证，允许本地存储模式运行
  * - 非本地模式：降级为匿名接口（无 Authorization header）
  * 确保即使认证失败，上报流程仍可继续
  */
@@ -1220,7 +1236,7 @@ export async function authWithFallback(): Promise<
   try {
     return await auth()
   } catch (err) {
-    if (isLocalDumpMode()) {
+    if (getRawDumpMode() >= RAW_DUMP_MODE.LOCAL) {
       log.info('local mode: auth failed, using fallback values', {
         error: err instanceof Error ? err.message : String(err),
       })
