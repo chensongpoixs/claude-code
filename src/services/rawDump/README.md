@@ -368,9 +368,11 @@ export CSC_RAW_DUMP_DIR=/tmp/raw-dump-debug
 ### 状态文件
 ```
 ~/.claude/raw-dump/csc-state.json
+~/.claude/raw-dump/csc-work-queue.jsonl
+~/.claude/raw-dump/csc-dead-letter.jsonl
 ```
 
-内容格式：
+**csc-state.json** — 去重状态：
 ```json
 {
   "conversation": {
@@ -378,12 +380,18 @@ export CSC_RAW_DUMP_DIR=/tmp/raw-dump-debug
     "session-id-1:msg-uuid-2": true
   },
   "summary": {
-    "session-id-1": 1747123456789
+    "session-id-1": "2026-05-12T10:30:00.000Z"
   },
   "commits": {
     "git@github.com:org/repo.git#main#/Users/xxx/code/repo": "abc123def"
   }
 }
+```
+
+**csc-dead-letter.jsonl** — 上报失败记录（超过最大重试次数的任务），每行一个 JSON 对象：
+```jsonl
+{"sessionID":"...","messageID":"...","directory":"...","attemptCount":4,"error":"...","endpoint":"/raw-store/task-conversation","failedAt":"2026-05-12T10:30:00.000Z"}
+{"sessionID":"...","messageID":"__summary__","directory":"...","attemptCount":4,"error":"...","endpoint":"/raw-store/task-summary","failedAt":"2026-05-12T10:31:00.000Z"}
 ```
 
 ### 日志文件
@@ -461,7 +469,10 @@ tail -f ~/.claude/raw-dump/csc-raw-dump.log
 cat ~/.claude/raw-dump/csc-state.json
 
 # 查看队列文件
-cat ~/.claude/raw-dump/csc-work-queue.json
+cat ~/.claude/raw-dump/csc-work-queue.jsonl
+
+# 查看失败记录（dead letter）
+cat ~/.claude/raw-dump/csc-dead-letter.jsonl
 
 # 查看是否有 worker 在运行（锁文件）
 cat ~/.claude/raw-dump/csc-work-queue.lock

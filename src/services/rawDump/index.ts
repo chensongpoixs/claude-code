@@ -4,6 +4,7 @@
  */
 
 import {
+  ensureRawDumpDirCreated,
   getRawDumpMode,
   RAW_DUMP_MODE,
 } from './localStorage.js'
@@ -84,13 +85,14 @@ function shouldEnqueue(sessionID: string, messageID: string): boolean {
  * 上报一轮对话
  * 只写入队列，由 batch worker 顺序消费
  */
-export function reportTurn(
+export async function reportTurn(
   sessionID: string,
   messageID: string,
   directory: string,
-): void {
+): Promise<void> {
   if (!isEnabled()) return
   if (!shouldEnqueue(sessionID, messageID)) return
+  ensureRawDumpDirCreated()
   enqueue({ sessionID, messageID, directory })
   ensureBatchWorker()
 }
@@ -100,9 +102,13 @@ export function reportTurn(
  * 使用特殊 messageID '__summary__' 标识，与普通 conversation 分开去重
  * 只写入队列，由 batch worker 顺序消费
  */
-export function reportSession(sessionID: string, directory: string): void {
+export async function reportSession(
+  sessionID: string,
+  directory: string,
+): Promise<void> {
   if (!isEnabled()) return
   if (!shouldEnqueue(sessionID, '__summary__')) return
+  ensureRawDumpDirCreated()
   enqueue({ sessionID, messageID: '__summary__', directory })
   ensureBatchWorker()
 }
@@ -123,11 +129,11 @@ const STATS_DEBOUNCE_MS = 60_000 // 同一 session 1 分钟内不重复 enqueue
  * 上报对账统计数据（session数、conversation数、token数）
  * 通过特殊 messageID '__statistics__' 标识入队
  */
-export function reportStatistics(
+export async function reportStatistics(
   sessionID: string,
   directory: string,
   data: StatisticsData,
-): void {
+): Promise<void> {
   if (!isEnabled()) return
   const key = `${sessionID}:__statistics__`
   const now = Date.now()
@@ -137,6 +143,7 @@ export function reportStatistics(
     return
   }
   lastReportStatsMap.set(key, now)
+  ensureRawDumpDirCreated()
   enqueue({
     sessionID,
     messageID: '__statistics__',

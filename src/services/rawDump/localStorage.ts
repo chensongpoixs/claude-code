@@ -24,15 +24,21 @@ export const RAW_DUMP_MODE = {
   BOTH: 3,
 } as const
 
+let rawDumpDirCreated = false
+
+export async function ensureRawDumpDirCreated(): Promise<void> {
+  if (rawDumpDirCreated) return
+  const RAW_DUMP_DIR = path.join(os.homedir(), '.claude', 'raw-dump')
+  await fs.mkdir(RAW_DUMP_DIR, { recursive: true })
+  rawDumpDirCreated = true
+}
+
 /**
  * 获取本地存储目录路径
  * 支持环境变量 CSC_RAW_DUMP_DIR 覆盖
  */
 export function getLocalDumpDir(): string {
-  return (process.env.CSC_RAW_DUMP_DIR || DEFAULT_LOCAL_DIR).replace(
-    /\/$/,
-    '',
-  )
+  return (process.env.CSC_RAW_DUMP_DIR || DEFAULT_LOCAL_DIR).replace(/\/$/, '')
 }
 
 /**
@@ -62,13 +68,17 @@ export async function writeLocalDump(
   body: Record<string, unknown>,
 ): Promise<void> {
   const dir = getLocalDumpDir()
-  const taskId = (body.task_id as string) || (body.commit_id as string)|| 'unknown'
+  const taskId =
+    (body.task_id as string) || (body.commit_id as string) || 'unknown'
   const taskDir = path.join(dir, type, taskId)
   await fs.mkdir(taskDir, { recursive: true })
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)
   const requestId =
-    (body.request_id as string) || (body.commit_id as string) || (body.task_id as string) || 'unknown'
+    (body.request_id as string) ||
+    (body.commit_id as string) ||
+    (body.task_id as string) ||
+    'unknown'
   const filename = `${timestamp}-${requestId}.json`
   const filePath = path.join(taskDir, filename)
 

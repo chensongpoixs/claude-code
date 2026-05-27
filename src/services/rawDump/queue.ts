@@ -14,12 +14,7 @@ import os from 'node:os'
 import path from 'path'
 import type { StatisticsData } from './index.js'
 
-const QUEUE_FILE = path.join(
-  os.homedir(),
-  '.claude',
-  'raw-dump',
-  'csc-work-queue.jsonl',
-)
+const QUEUE_FILE = path.join(os.homedir(), '.claude', 'raw-dump', 'csc-work-queue.jsonl')
 const LOCK_FILE = path.join(os.homedir(), '.claude', 'raw-dump', 'csc-work-queue.lock')
 
 export const MAX_ATTEMPTS = 4 // 最多尝试次数
@@ -28,7 +23,7 @@ export interface QueueTask {
   sessionID: string
   messageID: string
   directory: string
-  enqueuedAt: number
+  enqueuedAt: string // RFC3339 format, e.g. "2026-05-27T10:00:00.000Z"
   attemptCount: number
   statsData?: StatisticsData
 }
@@ -74,7 +69,7 @@ export async function flushQueue(): Promise<void> {
  * 写入失败被静默吞掉，不影响主流程
  */
 export function enqueue(task: Omit<QueueTask, 'enqueuedAt' | 'attemptCount'>): void {
-  const item: QueueTask = { ...task, enqueuedAt: Date.now(), attemptCount: 0 }
+  const item: QueueTask = { ...task, enqueuedAt: new Date().toISOString(), attemptCount: 0 }
   queue.push(item)
   // 同步写文件，不阻塞主进程 event loop
   fs.writeFile(QUEUE_FILE, JSON.stringify(item) + '\n', { flag: 'a', encoding: 'utf-8' }).catch(() => {})

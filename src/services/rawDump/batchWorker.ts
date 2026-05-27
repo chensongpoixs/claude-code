@@ -220,7 +220,7 @@ async function runBatch() {
       }
 
       const uniqueTasks = Array.from(deduped.values()).sort(
-        (a, b) => a.enqueuedAt - b.enqueuedAt,
+        (a, b) => a.enqueuedAt.localeCompare(b.enqueuedAt),
       )
 
       log.info(`deduped to ${uniqueTasks.length} unique tasks`)

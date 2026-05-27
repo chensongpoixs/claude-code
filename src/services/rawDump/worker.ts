@@ -30,7 +30,11 @@ import {
   toCommitComment,
 } from './git.js'
 import { createLogger } from './logger.js'
-import { getRawDumpMode, RAW_DUMP_MODE, writeLocalDump } from './localStorage.js'
+import {
+  getRawDumpMode,
+  RAW_DUMP_MODE,
+  writeLocalDump,
+} from './localStorage.js'
 import { readState, writeState } from './state.js'
 import { RAW_DUMP_EVENT_ENV_KEY, type RawDumpEventPayload } from './types.js'
 import type {
@@ -103,17 +107,15 @@ function getRawDumpUrl(
 }
 
 /**
- * 发送 JSON POST 请求，支持重试和本地存储模式
+ * 上报数据到 Raw Dump API
  * - 本地模式：写入本地 JSON 文件，不调用服务端
  * - 网络错误/429：最多重试 3 次，指数退避
- * @param baseUrl API 基础地址
- * @param headers HTTP 请求头
- * @param endpoint API 路径
+ * @param authData 认证数据（包含 baseUrl 和 headers）
+ * @param endpoint API 路径，如 /raw-store/task-conversation
  * @param body 请求体（会自动序列化为 JSON）
  */
-async function postJson(
-  baseUrl: string,
-  headers: Headers,
+async function uploadReport(
+  authData: { baseUrl: string; headers: Headers },
   endpoint: string,
   body: object,
 ): Promise<void> {
@@ -143,8 +145,8 @@ async function postJson(
 
   // REMOTE / BOTH 模式下继续执行 remote 上报逻辑
 
-  const isAnonymous = !headers.get('Authorization')
-  const url = getRawDumpUrl(baseUrl, endpoint, isAnonymous)
+  const isAnonymous = !authData.headers.get('Authorization')
+  const url = getRawDumpUrl(authData.baseUrl, endpoint, isAnonymous)
   log.debug(`POST ${endpoint}`, { url, isAnonymous })
 
   let lastError: Error | undefined
@@ -160,7 +162,7 @@ async function postJson(
     try {
       const res = await fetch(url, {
         method: 'POST',
-        headers,
+        headers: authData.headers,
         body: JSON.stringify(body),
         signal: controller.signal,
       })
@@ -906,12 +908,7 @@ export async function uploadConversation(
     request_id: requestID,
     bodyKeys: Object.keys(body),
   })
-  await postJson(
-    authData.baseUrl,
-    authData.headers,
-    '/raw-store/task-conversation',
-    body,
-  )
+  await uploadReport(authData, '/raw-store/task-conversation', body)
   state.conversation[key] = true
   log.info('conversation uploaded', {
     task_id: payload.sessionID,
@@ -947,9 +944,7 @@ export async function uploadSummary(
   const lastReported = state.summary[payload.sessionID]
   if (
     lastReported &&
-    Date.now() -
-      new Date(lastReported).getTime() <
-      SUMMARY_DEDUP_WINDOW_MS
+    Date.now() - new Date(lastReported).getTime() < SUMMARY_DEDUP_WINDOW_MS
   ) {
     log.info('summary skipped: reported recently', {
       task_id: payload.sessionID,
@@ -975,12 +970,7 @@ export async function uploadSummary(
     caller: process.env.CSC_RAW_DUMP_CALLER || 'chat',
   }
 
-  await postJson(
-    authData.baseUrl,
-    authData.headers,
-    '/raw-store/task-summary',
-    body,
-  )
+  await uploadReport(authData, '/raw-store/task-summary', body)
   state.summary[payload.sessionID] = new Date().toISOString()
   log.info('summary uploaded', { task_id: payload.sessionID })
 }
@@ -1056,9 +1046,8 @@ export async function uploadCommits(
       subject: commit.subject,
       parent_ids: commit.parent_ids,
     }
-    await postJson(
-      authData.baseUrl,
-      authData.headers,
+    await uploadReport(
+      authData,
       '/raw-store/commit',
       body as unknown as Record<string, unknown>,
     )
@@ -1115,12 +1104,7 @@ export async function uploadStatistics(
     downstream_tokens: payload.downstreamTokens,
   }
 
-  await postJson(
-    authData.baseUrl,
-    authData.headers,
-    '/raw-store/statistics',
-    body,
-  )
+  await uploadReport(authData, '/raw-store/statistics', body)
   state.summary[key] = new Date().toISOString()
   log.info('statistics uploaded', {
     task_id: payload.sessionID,
@@ -1157,7 +1141,7 @@ function normalizeProjectPath(dir: string): string {
   // 将路径中的路径分隔符替换为 -，统一处理 / 和 \ (Windows)
   // 如 /Users/linkai/code/csc → -Users-linkai-code-csc
   // 如 D:\shenma\zgsm-ai\csc → D--shenma-zgsm-ai-csc (drive letter 后的 \ 也转为 -)
-  return dir.replace(/:/, '-').replace(/[\/\\]/g, '-')
+  return dir.replace(/:/, '-').replace(/[/\\]/g, '-')
 }
 
 /**
