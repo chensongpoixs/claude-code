@@ -24,7 +24,7 @@ export function getClaudeConfigHomeDir(): string {
  * 如 /Users/linkai/code/csc → -Users-linkai-code-csc
  */
 export function normalizeProjectPath(dir: string): string {
-  return dir.replace(/:/, '-').replace(/[/\\]/g, '-')
+  return dir.replace(/:/g, '-').replace(/[/\\]/g, '-')
 }
 
 /**
@@ -135,17 +135,14 @@ export async function loadSessionMessages(
 }
 
 /**
- * 在消息列表中查找指定 ID 的消息
- * 支持通过 message.uuid 或 message.id 匹配
+ * 在消息列表中查找指定 ID 的消息(匹配message.uuid)
  */
 export function findMessage(
   messages: Record<string, unknown>[],
   messageID: string,
 ): Record<string, unknown> | undefined {
   return messages.find(
-    m =>
-      m.uuid === messageID ||
-      (m.message as Record<string, unknown>)?.id === messageID,
+    m => m.uuid === messageID,
   )
 }
 
@@ -479,10 +476,7 @@ export async function getLatestSessionInfo(
                 (msg.session_id as string) ||
                 (msg.uuid as string) ||
                 ''
-              const messageId =
-                (msg.uuid as string) ||
-                ((msg.message as Record<string, unknown>)?.id as string) ||
-                ''
+              const messageId = (msg.uuid as string) || ''
               if (sessionId && messageId) {
                 latestMsg = { sessionId, messageId, ts }
               }

@@ -119,7 +119,6 @@ async function processTask(
   const repoInfo = await getCachedRepoInfo(task.directory)
 
   // 统计本轮 session 的 conversation 数和 token 使用量
-  let conversationCount = 0
   let upstreamTokens = 0
   let downstreamTokens = 0
   let startTime = 0
@@ -138,7 +137,6 @@ async function processTask(
   )
 
   if (conversationUploaded) {
-    conversationCount = 1
     // 提取 messages 中的 token 使用量
     for (const msg of messages) {
       const usage = (msg.message as Record<string, unknown>)?.usage as
@@ -181,13 +179,7 @@ async function processTask(
   await uploadStatistics(
     {
       sessionID: task.sessionID,
-      directory: task.directory,
-      sessionCount: 1,
-      conversationCount,
-      upstreamTokens,
-      downstreamTokens,
-      startTime,
-      endTime,
+      directory: task.directory
     },
     authData,
     state,
@@ -284,9 +276,15 @@ async function uploadReport(
       ? 'conversation'
       : endpoint === '/raw-store/task-summary'
         ? 'summary'
-        : 'commit'
+        : endpoint === '/raw-store/commit'
+          ? 'commit'
+          : endpoint === '/raw-store/statistics'
+            ? 'statistics'
+            : 'unknown'
 
-  if (mode === RAW_DUMP_MODE.LOCAL || mode === RAW_DUMP_MODE.BOTH) {
+  if (type === 'unknown') {
+    log.warn('unknown endpoint, skipping local dump', { endpoint })
+  } else if (mode === RAW_DUMP_MODE.LOCAL || mode === RAW_DUMP_MODE.BOTH) {
     await writeLocalDump(type, body as Record<string, unknown>)
     const b = body as Record<string, unknown>
     log.info(`local dump: ${type} saved`, {
@@ -575,10 +573,7 @@ export async function uploadConversation(
     }
   }
 
-  const requestID =
-    ((assistant.message as Record<string, unknown>)?.id as string) ||
-    String(assistant.uuid) ||
-    payload.messageID
+  const requestID = String(assistant.uuid) || payload.messageID
   log.debug('found assistant message', {
     requestID,
     model: (assistant.message as Record<string, unknown>)?.model,
@@ -825,25 +820,19 @@ export async function uploadCommits(
 const STATS_DEDUP_WINDOW_MS = 60 * 60 * 1000 // 同一 session 1 小时内只上报一次 statistics
 
 /**
- * 将日期格式化为 YYYY/MM/DD
+ * 将日期格式化为 YYYY-MM-DD
  */
 function formatDateKey(date: Date): string {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
-  return `${year}/${month}/${day}`
+  return `${year}-${month}-${day}`
 }
 
 export async function uploadStatistics(
   payload: {
     sessionID: string
     directory: string
-    sessionCount: number
-    conversationCount: number
-    upstreamTokens: number
-    downstreamTokens: number
-    startTime: number
-    endTime: number
   },
   authData: Awaited<ReturnType<typeof auth>>,
   state: Awaited<ReturnType<typeof readState>>,
