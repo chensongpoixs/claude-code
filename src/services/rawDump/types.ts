@@ -20,10 +20,20 @@ export interface RawDumpEventPayload {
   directory: string
 }
 
+export interface TaskRecord {
+  lastEnqueuedAt: string // RFC3339，最后一次收到该组请求的时间戳
+  lastUploadAt: string // RFC3339，请求处理完毕的时间戳，为空表示尚未处理完毕，"DEAD_LETTER"表示已移至死信
+  taskCount: number // 收到的该组请求总个数
+  attemptCount: number // 已尝试次数，超过 MAX_ATTEMPTS 后移至 dead letter
+  directory: string // 工作目录，用于定位 session 文件
+}
+
 export interface RawDumpState {
-  conversation: Record<string, true>
-  summary: Record<string, string> // RFC3339 时间戳，如 "2024-01-01T12:00:00.000Z"
-  commits: Record<string, string>
+  conversation: Record<string, string> // key: "taskID:messageID", value: RFC3339 时间戳，未上报则为空字符串
+  summary: Record<string, string> //key: task-id, value: 上报成功的时间戳， RFC3339格式，如 "2024-01-01T12:00:00.000Z"
+  commits: Record<string, string> //key: repo-addr#branch#work-dir，value: 最后一个上报成功的commit-id
+  statistics: Record<string, string> // key: YYYY/MM/DD, value: RFC3339 时间戳
+  tasks: Record<string, TaskRecord> // key: "task-id:message-id"，值为任务跟踪记录
 }
 
 export interface DeadLetterEntry {
@@ -32,8 +42,11 @@ export interface DeadLetterEntry {
   directory: string
   attemptCount: number
   error: string
-  endpoint?: string
   failedAt: string
+  // 待上报的 HTTP 请求信息
+  url?: string
+  headers?: Record<string, string>
+  body?: object
 }
 
 export interface JwtPayload {
@@ -77,7 +90,6 @@ export interface ConversationPayload {
 export interface SummaryPayload {
   task_id: string
   start_time: string
-  end_time: string
   user_id: string
   user_name: string
   client_id: string

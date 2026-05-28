@@ -17,10 +17,6 @@ const log = createLogger('raw-dump')
 
 let batchWorkerSpawned = false
 
-// 调用频率限制：同一 session + messageID 5s 内不重复 enqueue
-const lastEnqueueMap = new Map<string, number>()
-const ENQUEUE_DEBOUNCE_MS = 5_000
-
 /**
  * 判断 Raw Dump 是否启用
  * - mode=0 时不输出（完全禁用）
@@ -61,29 +57,10 @@ function ensureBatchWorker() {
 }
 
 /**
- * 判断当前 session + message 是否需要 enqueue（去重）
- * 同一 key 在 5 秒内只允许 enqueue 一次，避免重复上报
- * @returns true 表示需要入队，false 表示跳过
- */
-function shouldEnqueue(sessionID: string, messageID: string): boolean {
-  const key = `${sessionID}:${messageID}`
-  const now = Date.now()
-  const last = lastEnqueueMap.get(key)
-  if (last && now - last < ENQUEUE_DEBOUNCE_MS) {
-    log.debug('reportTurn debounced', {
-      sessionID,
-      messageID,
-      lastMs: now - last,
-    })
-    return false
-  }
-  lastEnqueueMap.set(key, now)
-  return true
-}
-
-/**
  * 上报一轮对话
  * 只写入队列，由 batch worker 顺序消费
+ * reportTurn 代表有新的大模型调用（即对话），有信息变化需要上报
+ * 去重放在执行任务的逻辑中（batchWorker 的 runBatch）
  */
 export async function reportTurn(
   sessionID: string,
@@ -91,64 +68,7 @@ export async function reportTurn(
   directory: string,
 ): Promise<void> {
   if (!isEnabled()) return
-  if (!shouldEnqueue(sessionID, messageID)) return
   ensureRawDumpDirCreated()
   enqueue({ sessionID, messageID, directory })
-  ensureBatchWorker()
-}
-
-/**
- * 上报 session 摘要信息
- * 使用特殊 messageID '__summary__' 标识，与普通 conversation 分开去重
- * 只写入队列，由 batch worker 顺序消费
- */
-export async function reportSession(
-  sessionID: string,
-  directory: string,
-): Promise<void> {
-  if (!isEnabled()) return
-  if (!shouldEnqueue(sessionID, '__summary__')) return
-  ensureRawDumpDirCreated()
-  enqueue({ sessionID, messageID: '__summary__', directory })
-  ensureBatchWorker()
-}
-
-export interface StatisticsData {
-  sessionCount: number
-  conversationCount: number
-  upstreamTokens: number
-  downstreamTokens: number
-  startTime: number
-  endTime: number
-}
-
-const lastReportStatsMap = new Map<string, number>()
-const STATS_DEBOUNCE_MS = 60_000 // 同一 session 1 分钟内不重复 enqueue
-
-/**
- * 上报对账统计数据（session数、conversation数、token数）
- * 通过特殊 messageID '__statistics__' 标识入队
- */
-export async function reportStatistics(
-  sessionID: string,
-  directory: string,
-  data: StatisticsData,
-): Promise<void> {
-  if (!isEnabled()) return
-  const key = `${sessionID}:__statistics__`
-  const now = Date.now()
-  const last = lastReportStatsMap.get(key)
-  if (last && now - last < STATS_DEBOUNCE_MS) {
-    log.debug('reportStatistics debounced', { sessionID, lastMs: now - last })
-    return
-  }
-  lastReportStatsMap.set(key, now)
-  ensureRawDumpDirCreated()
-  enqueue({
-    sessionID,
-    messageID: '__statistics__',
-    directory,
-    statsData: data,
-  })
   ensureBatchWorker()
 }

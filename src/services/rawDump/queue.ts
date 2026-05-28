@@ -12,8 +12,6 @@
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'path'
-import type { StatisticsData } from './index.js'
-
 const QUEUE_FILE = path.join(os.homedir(), '.claude', 'raw-dump', 'csc-work-queue.jsonl')
 const LOCK_FILE = path.join(os.homedir(), '.claude', 'raw-dump', 'csc-work-queue.lock')
 
@@ -25,7 +23,6 @@ export interface QueueTask {
   directory: string
   enqueuedAt: string // RFC3339 format, e.g. "2026-05-27T10:00:00.000Z"
   attemptCount: number
-  statsData?: StatisticsData
 }
 
 // ----------- 内存中的队列 -----------
@@ -76,20 +73,11 @@ export function enqueue(task: Omit<QueueTask, 'enqueuedAt' | 'attemptCount'>): v
 }
 
 /**
- * 从内存队列中移除任务（成功或彻底失败时调用）
- * @param key sessionID:messageID
+ * 清空内存中的队列
  */
-export function removeTask(key: string): void {
-  queue = queue.filter(t => `${t.sessionID}:${t.messageID}` !== key)
-  flushQueue().catch(() => {})
-}
-
-/**
- * 消费队首任务（不移除，仅返回引用）
- * 用于在处理前 peek，失败时自行更新 attemptCount 再写回
- */
-export function peekTask(): QueueTask | undefined {
-  return queue[0]
+export function clearQueue(): void {
+  queue = []
+  fs.writeFile(QUEUE_FILE, '', 'utf-8').catch(() => {})
 }
 
 /**

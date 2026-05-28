@@ -11,7 +11,7 @@
 import { promises as fs, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { RawDumpState, DeadLetterEntry } from './types.js'
+import type { RawDumpState, DeadLetterEntry, TaskRecord } from './types.js'
 
 const STATE_DIR = path.join(os.homedir(), '.claude', 'raw-dump')
 const STATE_FILE = path.join(STATE_DIR, 'csc-state.json')
@@ -27,6 +27,61 @@ function createEmptyState(): RawDumpState {
     conversation: {},
     summary: {},
     commits: {},
+    statistics: {},
+    tasks: {},
+  }
+}
+
+/**
+ * 清理昨日之前的已完成上报的 conversation、summary、tasks 记录
+ * commits 记录保留
+ * @param state 待清理的 state 对象
+ */
+function cleanupOldRecords(state: RawDumpState): RawDumpState {
+  const now = Date.now()
+  // 获取昨日 0 点的时间戳
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  yesterday.setHours(0, 0, 0, 0)
+  const yesterdayMs = yesterday.getTime()
+
+  const cleanedConversation: Record<string, string> = {}
+  for (const [key, ts] of Object.entries(state.conversation)) {
+    if (!ts) continue
+    const date = new Date(ts).getTime()
+    if (date >= yesterdayMs) {
+      cleanedConversation[key] = ts
+    }
+  }
+
+  const cleanedSummary: Record<string, string> = {}
+  for (const [key, ts] of Object.entries(state.summary)) {
+    if (!ts) continue
+    const date = new Date(ts).getTime()
+    if (date >= yesterdayMs) {
+      cleanedSummary[key] = ts
+    }
+  }
+
+  const cleanedTasks: Record<string, TaskRecord> = {}
+  for (const [key, record] of Object.entries(state.tasks)) {
+    // 清理 lastUploadAt 非空且已超过昨日的记录
+    if (record.lastUploadAt) {
+      const date = new Date(record.lastUploadAt).getTime()
+      if (date >= yesterdayMs) {
+        cleanedTasks[key] = record
+      }
+    } else {
+      // lastUploadAt 为空表示尚未处理完毕，保留
+      cleanedTasks[key] = record
+    }
+  }
+
+  return {
+    ...state,
+    conversation: cleanedConversation,
+    summary: cleanedSummary,
+    tasks: cleanedTasks,
   }
 }
 
@@ -101,11 +156,14 @@ export async function readState(): Promise<RawDumpState> {
     try {
       const text = await fs.readFile(STATE_FILE, 'utf-8')
       const parsed = JSON.parse(text) as Partial<RawDumpState>
-      return {
+      const state: RawDumpState = {
         conversation: parsed.conversation ?? {},
         summary: parsed.summary ?? {},
         commits: parsed.commits ?? {},
+        statistics: parsed.statistics ?? {},
+        tasks: parsed.tasks ?? {},
       }
+      return cleanupOldRecords(state)
     } catch {
       return createEmptyState()
     }
