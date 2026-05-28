@@ -63,8 +63,15 @@ async function runBatch() {
       const newTasks = getQueue()
 
       if (newTasks.length === 0) {
-        log.debug('queue empty')
-        return
+        // 队列为空时，检查 state.tasks 是否有未完成的任务
+        const hasIncomplete = Object.values(state.tasks).some(
+          r => !r.lastUploadAt,
+        )
+        if (!hasIncomplete) {
+          log.debug('queue empty, no incomplete tasks')
+          return
+        }
+        log.debug('queue empty, but has incomplete tasks in state')
       }
 
       log.info(`processing ${newTasks.length} new tasks`)

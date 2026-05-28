@@ -119,7 +119,7 @@ reportTurn(sessionId, assistantMessage.uuid, cwd)
 | 字段 | 来源 | 说明 |
 |-----|------|------|
 | `task_id` | `sessionID` | 会话唯一标识 |
-| `request_id` | `message.id` 或 `message.uuid` | assistant message ID |
+| `request_id` | `message.uuid` | assistant message ID |
 | `prompt_mode` | `user.variant` | 用户消息变体（如 `normal` / `plan`） |
 | `mode` | `assistant.mode` / `assistant.agent` | 默认 `"code"` |
 | `model` | `assistant.message.model` | 使用的模型 |

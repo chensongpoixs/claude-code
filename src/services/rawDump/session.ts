@@ -107,14 +107,12 @@ export async function loadSessionMessages(
         const hasSession = lines.some(
           m =>
             m.sessionId === sessionId ||
-            m.session_id === sessionId ||
-            m.uuid === sessionId,
+            m.session_id === sessionId
         )
         const hasMessage = messageId
           ? lines.some(
               m =>
-                m.uuid === messageId ||
-                (m.message as Record<string, unknown>)?.id === messageId,
+                m.uuid === messageId,
             )
           : false
         if (hasSession || hasMessage) {

@@ -689,13 +689,10 @@ export async function uploadConversation(
   return true
 }
 
-const SUMMARY_DEDUP_WINDOW_MS = 5 * 60 * 1000 // 同一 session 5 分钟内 summary 只上报一次
 
 /**
  * 上报一个 session 的摘要信息到 /raw-store/task-summary
- * 摘要以 session 为维度，5 分钟内同一 session 只上报一次（通过 state.summary 去重）
- * 包含 session 的起止时间、用户信息、客户端信息等
- * 即使 conversation 上报失败，summary 仍会独立上报
+ * SummaryPayload 的信息不会更新，同一 session 只上报一次（通过 state.summary 去重）
  */
 export async function uploadSummary(
   payload: {
@@ -711,15 +708,9 @@ export async function uploadSummary(
     messageCount: payload.messages.length,
   })
 
-  const lastReported = state.summary[payload.sessionID]
-  if (
-    lastReported &&
-    Date.now() - new Date(lastReported).getTime() < SUMMARY_DEDUP_WINDOW_MS
-  ) {
-    log.info('summary skipped: reported recently', {
+  if (state.summary[payload.sessionID]) {
+    log.info('summary skipped: already uploaded', {
       task_id: payload.sessionID,
-      lastReported,
-      windowMs: SUMMARY_DEDUP_WINDOW_MS,
     })
     return
   }
