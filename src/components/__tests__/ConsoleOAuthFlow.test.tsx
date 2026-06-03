@@ -63,16 +63,12 @@ mock.module('../keybindings/useKeybinding.js', () => ({
 import { ConsoleOAuthFlow } from '../ConsoleOAuthFlow.js';
 
 describe('ConsoleOAuthFlow', () => {
-  test(
-    'renders initial login method selection',
-    async () => {
-      const onDone = () => {};
-      const out = await renderToString(<ConsoleOAuthFlow onDone={onDone} />);
+  test('renders initial login method selection', async () => {
+    const onDone = () => {};
+    const out = await renderToString(<ConsoleOAuthFlow onDone={onDone} />);
 
-      expect(out).toContain('Select login method');
-      expect(out).toContain('Local LLM');
-      expect(out).toContain('Gemini API');
-    },
-    { timeout: 10000 },
-  );
+    expect(out).toContain('Select login method');
+    expect(out).toContain('Local LLM');
+    expect(out).toContain('Gemini API');
+  }, 10000);
 });

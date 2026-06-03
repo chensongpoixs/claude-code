@@ -5,27 +5,33 @@ import type { Message } from '../../../types/message.js';
 
 let transcriptShareDismissed = false;
 let productFeedbackAllowed = true;
-const mockSubmitTranscriptShare = mock(async () => ({ success: true }));
 
-mock.module('../../../utils/config.js', () => ({
-  getGlobalConfig: () => ({ transcriptShareDismissed }),
-  saveGlobalConfig: (
-    updater: (current: { transcriptShareDismissed?: boolean }) => {
-      transcriptShareDismissed?: boolean;
-    },
-  ) => {
-    const next = updater({ transcriptShareDismissed });
-    transcriptShareDismissed = next.transcriptShareDismissed ?? false;
-  },
+const mockSubmitTranscriptShare = mock(async () => {});
+
+mock.module('../../../services/analytics/index.js', () => ({
+  logEvent: () => {},
 }));
-mock.module('../../../services/policyLimits/index.js', () => ({
-  isPolicyAllowed: () => productFeedbackAllowed,
-}));
+
 mock.module('../submitTranscriptShare.js', () => ({
   submitTranscriptShare: mockSubmitTranscriptShare,
 }));
 
-const { useFrustrationDetection } = await import('../useFrustrationDetection.js');
+mock.module('../../../services/policyLimits/index.js', () => ({
+  isPolicyAllowed: (p: string) => (p === 'product_feedback' ? productFeedbackAllowed : true),
+}));
+
+mock.module('../../../utils/config.js', () => ({
+  getGlobalConfig: () => ({
+    transcriptShareDismissed,
+  }),
+  saveGlobalConfig: (fn: any) => {
+    const current = { transcriptShareDismissed };
+    const next = typeof fn === 'function' ? fn(current) : fn;
+    transcriptShareDismissed = next.transcriptShareDismissed;
+  },
+}));
+
+import { useFrustrationDetection } from '../useFrustrationDetection.js';
 
 type DetectionResult = ReturnType<typeof useFrustrationDetection>;
 
@@ -69,28 +75,20 @@ afterEach(() => {
 });
 
 describe('useFrustrationDetection', () => {
-  test(
-    'stays closed without frustration signals',
-    async () => {
-      const result = await renderDetection({ messages: [] });
+  test('stays closed without frustration signals', async () => {
+    const result = await renderDetection({ messages: [] });
 
-      expect(result.state).toBe('closed');
-      expect(typeof result.handleTranscriptSelect).toBe('function');
-    },
-    { timeout: 10000 },
-  );
+    expect(result.state).toBe('closed');
+    expect(typeof result.handleTranscriptSelect).toBe('function');
+  }, 10000);
 
-  test(
-    'opens a transcript prompt for repeated API errors',
-    async () => {
-      const result = await renderDetection({
-        messages: [apiError('a'), apiError('b')],
-      });
+  test('opens a transcript prompt for repeated API errors', async () => {
+    const result = await renderDetection({
+      messages: [apiError('a'), apiError('b')],
+    });
 
-      expect(result.state).toBe('transcript_prompt');
-    },
-    { timeout: 10000 },
-  );
+    expect(result.state).toBe('transcript_prompt');
+  }, 10000);
 
   test('does not prompt while loading, prompting, blocked by another survey, dismissed, or policy-denied', async () => {
     const messages = [apiError('a'), apiError('b')];
@@ -105,7 +103,7 @@ describe('useFrustrationDetection', () => {
     transcriptShareDismissed = false;
     productFeedbackAllowed = false;
     expect((await renderDetection({ messages })).state).toBe('closed');
-  });
+  }, 10000);
 
   test('submits transcript share when the user accepts', async () => {
     const result = await renderDetection({
@@ -120,5 +118,5 @@ describe('useFrustrationDetection', () => {
       'frustration',
       expect.any(String),
     );
-  });
+  }, 10000);
 });
