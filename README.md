@@ -10,12 +10,11 @@
 
 > Which Claude do you like? The open source one is the best.
 
-牢 A (Anthropic) 官方 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI 工具的源码反编译/逆向还原项目。目标是将 Claude Code 大部分功能及工程化能力复现 (问就是老佛爷已经付过钱了)。虽然很难绷, 但是它叫做 CCB(踩踩背)... 而且, 我们实现了企业版或者需要登陆 Claude 账号才能使用的特性, 实现技术普惠
+牢 A (Anthropic) 官方 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 完整复原的工程化项目。虽然很难绷, 但是它叫做 CCB(踩踩背)... 而且, 我们实现了企业版或者需要登陆 Claude 账号才能使用的特性, 并在此基础上扩展了更多好玩的特性。
 
-> 我们将会在五一期间进行整个代码仓库的 lint 规范化, 这个期间提交的 PR 可能会有非常多的冲突, 所以大的功能请尽量在这之前提交哈
+[Peri Code](https://github.com/KonghaYao/peri)：Claude Code 兼容的 Rust Agent，多年大模型经验匠心制作，国内大模型（DeepSeek/GLM）精调，CPU/内存极致优化，在开发版/树莓派上也能跑 CC 一样的体验。
 
-[文档在这里, 支持投稿 PR](https://ccb.agent-aura.top/) | [留影文档在这里](./Friends.md) | [Discord 群组](https://discord.gg/uApuzJWGKX)
-
+[文档在这里](https://ccb.agent-aura.top/) | [留影文档在这里](./Friends.md) | [Discord 群组，群主在线答疑](https://discord.gg/uApuzJWGKX)
 
 | 特性                        | 说明                                                                                                                         | 文档                                                                                                                                      |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
@@ -158,9 +157,13 @@ bun run build
    - **Ollama 深度集成**: 可直接在 CLI 中查看已安装模型，或输入模型名（如 `llama3.1`）一键拉取（Pull）。支持模型列表交互切换和硬件状态自动检测。
    - 自动检测本地运行状态和默认端口。
 
-#### /login 字段说明 (云端模式)：
-
-> ℹ️ 支持所有 Anthropic API 兼容服务（如 OpenRouter、AWS Bedrock 代理等），只要接口兼容 Messages API 即可。
+| 📌 字段      | 📝 说明       | 💡 示例                      |
+| ------------ | ------------- | ---------------------------- |
+| Base URL     | API 服务地址  | `https://api.example.com/v1` |
+| API Key      | 认证密钥      | `sk-xxx`                     |
+| Haiku Model  | 快速模型 ID   | `claude-haiku-4-5-20251001`  |
+| Sonnet Model | 均衡模型 ID   | `claude-sonnet-4-6`          |
+| Opus Model   | 高性能模型 ID | `claude-opus-4-6`            |
 
 ### 🩺 系统诊断 /doctor
 

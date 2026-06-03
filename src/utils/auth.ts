@@ -1724,12 +1724,29 @@ export function getSubscriptionName(): string {
   }
 }
 
-/** Check if using third-party services (Bedrock or Vertex or Foundry) */
+/**
+ * Check if using third-party services (non-Anthropic providers).
+ *
+ * This function gates several behaviours that should only apply when the user
+ * is NOT calling the first-party Anthropic API directly:
+ *  - auth status display (authStatus handler)
+ *  - command visibility (login/logout shown for non-3P)
+ *  - command availability checks (meetsAvailabilityRequirement)
+ *
+ * KEEP IN SYNC with providers.ts — when a new CLAUDE_CODE_USE_* env var is
+ * added to getAPIProvider(), the corresponding check MUST be added here.
+ * Providers whose selection is controlled purely via settings.modelType
+ * (rather than env vars) are NOT covered by this function and may need
+ * separate handling in the call sites above.
+ */
 export function isUsing3PServices(): boolean {
   return !!(
     isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
     isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY) ||
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI) ||
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_GEMINI) ||
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_GROK)
   )
 }
 
@@ -1880,12 +1897,12 @@ export function getAccountInformation() {
     accountInfo.apiKeySource = apiKeySource
   }
 
-  // We don't know the organization if we're relying on an external API key or auth token
+  // 如果我们依赖外部 API 密钥或认证令牌，则不知道组织
   if (
     authTokenSource === 'claude.ai' ||
     apiKeySource === '/login managed key'
   ) {
-    // Get organization name from OAuth account info
+    // 从 OAuth 账户信息获取组织名称
     const orgName = getOauthAccountInfo()?.organizationName
     if (orgName) {
       accountInfo.organization = orgName
